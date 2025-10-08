@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MainNavigator from 'navigation/main/MainNavigator';
 
 export default function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+  const isDarkMode = useColorScheme() === 'light';
 
   return (
     <SafeAreaProvider>

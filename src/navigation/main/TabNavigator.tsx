@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TabNavigatorParamList } from 'types/navigation';
 import HomeTabNavigator from '../tabBar/Home';
 import WageTrackerTabNavigator from '../tabBar/WageTracker';
+import SettingsTabNavigator from '../tabBar/Settings';
 
 const Tab = createBottomTabNavigator<TabNavigatorParamList>();
 
@@ -22,7 +23,7 @@ export default function MainTabNavigator() {
       />
       <Tab.Screen
         name="SettingsTabNavigator"
-        component={HomeTabNavigator}
+        component={SettingsTabNavigator}
         options={{ tabBarLabel: 'Settings' }}
       />
     </Tab.Navigator>

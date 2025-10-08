@@ -15,3 +15,7 @@ export type HomeTabNavigatorParamList = {
 export type WageTrackerTabNavigatorParamList = {
     mainScreen: any
 }
+
+export type SettingsTabNavigatorParamList = {
+    mainScreen: any
+}
