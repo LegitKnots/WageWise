@@ -8,7 +8,7 @@ const Tab = createBottomTabNavigator<TabNavigatorParamList>();
 
 export default function MainTabNavigator() {
   return (
-    <Tab.Navigator initialRouteName="HomeTabNavigator">
+    <Tab.Navigator initialRouteName="HomeTabNavigator" screenOptions={{headerShown: false}}>
       <Tab.Screen
         name="HomeTabNavigator"
         component={HomeTabNavigator}
