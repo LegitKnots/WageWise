@@ -5,10 +5,8 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  Platform,
-  TextInput,
   Alert,
+  InteractionManager,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -16,13 +14,21 @@ import {
   Wallet,
   Pencil,
   Trash2,
-  Settings,
   CalendarClock,
+  CalendarCog,
 } from "lucide-react-native";
-import { useWageTracker } from "context/wageTracker";
-import type { Employer, PayDay, Schedule } from "types/wageTracker";
 
-/* ---------- utils ---------- */
+import EmployerEditorModal, {
+  EmployerEditorPayload,
+} from "components/wage/EmployerEditorModal";
+import ScheduleModal from "components/wage/ScheduleModal";
+import PaycheckModal from "components/wage/PaycheckModal";
+import { COLORS } from "components/wage/theme";
+
+import { useWageTracker } from "context/wageTracker";
+import type { Employer, PayDay } from "types/wageTracker";
+
+/* -------------------- utils -------------------- */
 const fmtCurrency = (n: number) =>
   Intl.NumberFormat(undefined, {
     style: "currency",
@@ -30,38 +36,12 @@ const fmtCurrency = (n: number) =>
     maximumFractionDigits: 2,
   }).format(n);
 
-function lastOf<T>(arr: T[]): T | undefined {
-  return arr.length ? arr[arr.length - 1] : undefined;
-}
+const lastOf = <T,>(arr: T[]): T | undefined => (arr.length ? arr[arr.length - 1] : undefined);
 
-function toDateInputValue(ms?: number) {
-  const d = ms ? new Date(ms) : new Date();
-  // yyyy-mm-dd
-  const m = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
-function parseDateInputValue(v: string): number {
-  // naive parse yyyy-mm-dd; falls back to now
-  const [y, m, d] = v.split("-").map((x) => parseInt(x, 10));
-  if (!y || !m || !d) return Date.now();
-  const dt = new Date(y, m - 1, d, 9, 0, 0, 0);
-  return dt.getTime();
-}
-
-const DOW_LABELS: NonNullable<Schedule["dayOfWeek"]>[] = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-];
-
-/* ---------- main screen ---------- */
-const WageTrackerScreen = ({ navigation }: any) => {
+/* =========================================================
+   Screen
+========================================================= */
+const WageTrackerScreen = () => {
   const {
     loading,
     employers,
@@ -74,179 +54,133 @@ const WageTrackerScreen = ({ navigation }: any) => {
     nextPayDates,
   } = useWageTracker();
 
-  // Modal state
-  const [showPayModal, setShowPayModal] = useState(false);
+  /* ---------- modal / editing state ---------- */
   const [showEmployerModal, setShowEmployerModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
 
-  // Editing state
+  const [editingEmployer, setEditingEmployer] = useState(false);
   const [activeEmployerId, setActiveEmployerId] = useState<string | null>(null);
-  const activeEmployer = useMemo(
+  const [editPayInitial, setEditPayInitial] = useState<PayDay | undefined>(undefined);
+
+  const activeEmployer = useMemo<Employer | null>(
     () => employers.find((e) => e.id === activeEmployerId) || null,
     [employers, activeEmployerId]
   );
 
-  // Pay form state
-  const [payDate, setPayDate] = useState<string>(toDateInputValue());
-  const [gross, setGross] = useState<string>("");
-  const [taxes, setTaxes] = useState<string>("");
-  const [net, setNet] = useState<string>("");
+  const soonest = nextPayDates[0];
+  const hasData = employers.length > 0;
 
-  // Employer form state
-  const [empName, setEmpName] = useState<string>("");
-  const [empColor, setEmpColor] = useState<string>("#007AFF");
-  const [editingEmployer, setEditingEmployer] = useState<boolean>(false);
+  /* ---------- open handlers ---------- */
+  const openEmployerModal = useCallback((e?: Employer) => {
+    if (e) {
+      setEditingEmployer(true);
+      setActiveEmployerId(e.id);
+    } else {
+      setEditingEmployer(false);
+      setActiveEmployerId(null);
+    }
+    setShowEmployerModal(true);
+  }, []);
 
-  // Schedule form state
-  const [freq, setFreq] = useState<Schedule["payFrequency"]>("biweekly");
-  const [dayOfWeek, setDayOfWeek] =
-    useState<NonNullable<Schedule["dayOfWeek"]>>("friday");
-  const [dayOfMonth, setDayOfMonth] = useState<string>("1");
-  const [anchor, setAnchor] = useState<string>(""); // yyyy-mm-dd
-  const [hour, setHour] = useState<string>("9");
-  const [minute, setMinute] = useState<string>("0");
-
-  /* ---------- helpers ---------- */
-  const resetPayForm = useCallback(() => {
-    setPayDate(toDateInputValue());
-    setGross("");
-    setTaxes("");
-    setNet("");
+  const openScheduleModal = useCallback((e: Employer) => {
+    setActiveEmployerId(e.id);
+    setShowScheduleModal(true);
   }, []);
 
   const openPayModal = useCallback(
-    (employerId?: string) => {
+    (employerId?: string, initial?: PayDay) => {
       const id = employerId ?? employers[0]?.id ?? null;
       if (!id) {
-        Alert.alert(
-          "No employer",
-          "Add an employer & schedule before logging a paycheck."
-        );
+        Alert.alert("No employer", "Add an employer & schedule before logging a paycheck.");
         return;
       }
       setActiveEmployerId(id);
-      resetPayForm();
+      setEditPayInitial(initial);
       setShowPayModal(true);
     },
-    [employers, resetPayForm]
+    [employers]
   );
 
-  const openEmployerModal = useCallback(
-    (e?: Employer) => {
-      if (e) {
-        // edit
-        setEditingEmployer(true);
-        setActiveEmployerId(e.id);
-        setEmpName(e.name);
-        setEmpColor(e.color ?? "#007AFF");
-      } else {
-        // add
-        setEditingEmployer(false);
-        setActiveEmployerId(null);
-        setEmpName("");
-        setEmpColor("#007AFF");
+  /* ---------- save handlers ---------- */
+  const handleSaveEmployer = useCallback(
+    async (payload: EmployerEditorPayload) => {
+      if (editingEmployer && activeEmployerId) {
+        // EDIT flow
+        await updateEmployer(activeEmployerId, {
+          name: payload.name,
+          color: payload.color,
+          payStructure: payload.payStructure,
+        });
+        setShowEmployerModal(false);
+        return;
       }
-      setShowEmployerModal(true);
-    },
-    []
-  );
 
-  const openScheduleModal = useCallback(
-    (e: Employer) => {
-      setActiveEmployerId(e.id);
-      setFreq(e.schedule.payFrequency);
-      setDayOfWeek(e.schedule.dayOfWeek ?? "friday");
-      setDayOfMonth(String(e.schedule.dayOfMonth ?? 1));
-      setAnchor(e.schedule.biweeklyAnchorDate ? toDateInputValue(e.schedule.biweeklyAnchorDate) : "");
-      setHour(String(e.schedule.hour ?? 9));
-      setMinute(String(e.schedule.minute ?? 0));
-      setShowScheduleModal(true);
-    },
-    []
-  );
-
-  /* ---------- submit handlers ---------- */
-  const submitPay = useCallback(async () => {
-    if (!activeEmployerId) return;
-    const entry: PayDay = {
-      date: parseDateInputValue(payDate),
-      gross: Number(gross || 0),
-      taxes: Number(taxes || 0),
-      net: Number(net || 0) || Number(gross || 0) - Number(taxes || 0),
-    };
-    await addPayday(activeEmployerId, entry);
-    setShowPayModal(false);
-  }, [activeEmployerId, payDate, gross, taxes, net, addPayday]);
-
-  const submitEmployer = useCallback(async () => {
-    if (editingEmployer) {
-      if (!activeEmployerId) return;
-      await updateEmployer(activeEmployerId, {
-        name: empName.trim() || "Employer",
-        color: empColor,
-      });
-    } else {
-      // require you to generate an id; here we use timestamp for simplicity
+      // ADD flow
       const id = `emp_${Date.now()}`;
       await addEmployer({
         id,
-        name: empName.trim() || "Employer",
-        color: empColor,
+        name: payload.name,
+        color: payload.color,
         schedule: {
           payFrequency: "biweekly",
           dayOfWeek: "friday",
           hour: 9,
           minute: 0,
         },
+        payStructure: payload.payStructure,
+        history: [],
       });
+
       setActiveEmployerId(id);
-    }
-    setShowEmployerModal(false);
-  }, [
-    editingEmployer,
-    activeEmployerId,
-    empName,
-    empColor,
-    addEmployer,
-    updateEmployer,
-  ]);
+      setShowEmployerModal(false);
 
-  const submitSchedule = useCallback(async () => {
-    if (!activeEmployerId) return;
+      // Wait for the close animation, then open schedule editor for the new employer
+      InteractionManager.runAfterInteractions(() => {
+        setTimeout(() => setShowScheduleModal(true), 150);
+      });
+    },
+    [editingEmployer, activeEmployerId, updateEmployer, addEmployer]
+  );
 
-    const patch: Partial<Employer> = {
-      schedule: {
-        payFrequency: freq,
-        dayOfWeek: freq !== "monthly" ? dayOfWeek : undefined,
-        dayOfMonth: freq === "monthly" ? Number(dayOfMonth || 1) : undefined,
-        biweeklyAnchorDate:
-          freq === "biweekly" && anchor ? parseDateInputValue(anchor) : undefined,
-        hour: Number(hour || 9),
-        minute: Number(minute || 0),
-      } as Schedule,
-    };
+  const handleSaveSchedule = useCallback(
+    async (schedule: Employer["schedule"]) => {
+      if (!activeEmployerId) return;
+      await updateEmployer(activeEmployerId, { schedule });
+      setShowScheduleModal(false);
+    },
+    [activeEmployerId, updateEmployer]
+  );
 
-    await updateEmployer(activeEmployerId, patch);
-    setShowScheduleModal(false);
-  }, [activeEmployerId, freq, dayOfWeek, dayOfMonth, anchor, hour, minute, updateEmployer]);
+  const handleSavePay = useCallback(
+    async (entry: PayDay) => {
+      if (!activeEmployerId) return;
 
-  /* ---------- derived ---------- */
-  const soonest = nextPayDates[0];
-  const hasData = employers.length > 0;
+      if (editPayInitial) {
+        if (upsertPayday) {
+          await upsertPayday(activeEmployerId, entry);
+        } else {
+          await deletePaydayByDate(activeEmployerId, editPayInitial.date);
+          await addPayday(activeEmployerId, entry);
+        }
+      } else {
+        await addPayday(activeEmployerId, entry);
+      }
 
+      setEditPayInitial(undefined);
+      setShowPayModal(false);
+    },
+    [activeEmployerId, editPayInitial, upsertPayday, deletePaydayByDate, addPayday]
+  );
+
+  /* -------------------- render -------------------- */
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Header + primary action */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Header */}
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Wage Tracker</Text>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => openPayModal()}
-          >
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => openPayModal()}>
             <PlusCircle size={18} color="#FFFFFF" />
             <Text style={styles.primaryBtnText}>Log Paycheck</Text>
           </TouchableOpacity>
@@ -257,24 +191,19 @@ const WageTrackerScreen = ({ navigation }: any) => {
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Set up your first employer</Text>
             <Text style={styles.emptyText}>
-              Add an employer and schedule, then start logging paychecks.
+              Add an employer, choose color & pay type, then start logging paychecks.
             </Text>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => openEmployerModal()}
-              >
-                <PlusCircle size={18} color="#FFFFFF" />
-                <Text style={styles.primaryBtnText}>Add Employer</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={[styles.primaryBtn, styles.mt8]} onPress={() => openEmployerModal()}>
+              <PlusCircle size={18} color="#FFFFFF" />
+              <Text style={styles.primaryBtnText}>Add Employer</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Soonest pay + actions */}
+        {/* Soonest pay banner */}
         {hasData && soonest && (
           <View style={styles.banner}>
-            <CalendarClock size={18} color="#111827" />
+            <CalendarClock size={18} color={COLORS.text} />
             <Text style={styles.bannerText}>
               Next pay:{" "}
               <Text style={styles.bannerStrong}>
@@ -291,40 +220,29 @@ const WageTrackerScreen = ({ navigation }: any) => {
         {/* Employer list */}
         {employers.map((e) => {
           const last = lastOf(e.history);
-          const lastNet = last?.net ?? 0;
           const upcoming = nextPayDates.find((n) => n.employerId === e.id)?.date;
 
           return (
             <View key={e.id} style={styles.empCard}>
               <View style={styles.empHeader}>
                 <View style={styles.empLeft}>
-                  <View
-                    style={[styles.colorDot, { backgroundColor: e.color || "#3B82F6" }]}
-                  />
+                  <View style={[styles.colorDot, { backgroundColor: e.color || COLORS.primary }]} />
                   <Text style={styles.empName}>{e.name}</Text>
                 </View>
 
                 <View style={styles.empActions}>
                   <TouchableOpacity onPress={() => openScheduleModal(e)} style={styles.iconBtn}>
-                    <Settings size={18} color="#6B7280" />
+                    <CalendarCog size={18} color={COLORS.muted} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => openEmployerModal(e)} style={styles.iconBtn}>
-                    <Pencil size={18} color="#6B7280" />
+                    <Pencil size={18} color={COLORS.muted} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() =>
-                      Alert.alert(
-                        "Remove employer?",
-                        "This will delete all pay history for this employer.",
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Delete",
-                            style: "destructive",
-                            onPress: () => deleteEmployer(e.id),
-                          },
-                        ]
-                      )
+                      Alert.alert("Remove employer?", "This will delete all pay history for this employer.", [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Delete", style: "destructive", onPress: () => deleteEmployer(e.id) },
+                      ])
                     }
                     style={styles.iconBtn}
                   >
@@ -333,38 +251,29 @@ const WageTrackerScreen = ({ navigation }: any) => {
                 </View>
               </View>
 
-              {/* Employer stats row */}
+              {/* Stats */}
               <View style={styles.empStatsRow}>
-                <View style={styles.statChip}>
-                  <Text style={styles.statLabel}>Last Net</Text>
-                  <Text style={styles.statValue}>{fmtCurrency(lastNet)}</Text>
-                </View>
-                <View style={styles.statChip}>
-                  <Text style={styles.statLabel}>Entries</Text>
-                  <Text style={styles.statValue}>{e.history.length}</Text>
-                </View>
-                <View style={styles.statChip}>
-                  <Text style={styles.statLabel}>Next Pay</Text>
-                  <Text style={styles.statValue}>
-                    {upcoming
-                      ? upcoming.toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                        })
-                      : "—"}
-                  </Text>
-                </View>
+                <Stat label="Last Net" value={fmtCurrency(last?.net ?? 0)} />
+                <Stat label="Entries" value={String(e.history.length)} />
+                <Stat
+                  label="Next Pay"
+                  value={
+                    upcoming
+                      ? upcoming.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                      : "—"
+                  }
+                />
               </View>
 
-              {/* Pay history list (compact) */}
+              {/* History (compact) */}
               {e.history.length > 0 ? (
-                <View style={{ marginTop: 10, gap: 8 }}>
+                <View style={styles.historyWrap}>
                   {e.history
                     .slice(-5)
                     .reverse()
                     .map((p) => (
                       <View key={p.date} style={styles.payRow}>
-                        <Wallet size={18} color="#007AFF" />
+                        <Wallet size={18} color={e.color || COLORS.primary} />
                         <Text style={styles.payRowText}>
                           {new Date(p.date).toLocaleDateString(undefined, {
                             month: "short",
@@ -373,31 +282,23 @@ const WageTrackerScreen = ({ navigation }: any) => {
                           })}{" "}
                           • {fmtCurrency(p.net)}
                         </Text>
-                        <View style={{ flex: 1 }} />
+                        <View style={styles.flex1} />
                         <TouchableOpacity
                           style={styles.iconBtn}
                           onPress={() => {
-                            // open pay modal prefilled for edit
                             setActiveEmployerId(e.id);
-                            setPayDate(toDateInputValue(p.date));
-                            setGross(String(p.gross));
-                            setTaxes(String(p.taxes));
-                            setNet(String(p.net));
+                            setEditPayInitial(p);
                             setShowPayModal(true);
                           }}
                         >
-                          <Pencil size={18} color="#6B7280" />
+                          <Pencil size={18} color={COLORS.muted} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.iconBtn}
                           onPress={() =>
                             Alert.alert("Delete paycheck?", "", [
                               { text: "Cancel", style: "cancel" },
-                              {
-                                text: "Delete",
-                                style: "destructive",
-                                onPress: () => deletePaydayByDate(e.id, p.date),
-                              },
+                              { text: "Delete", style: "destructive", onPress: () => deletePaydayByDate(e.id, p.date) },
                             ])
                           }
                         >
@@ -410,284 +311,90 @@ const WageTrackerScreen = ({ navigation }: any) => {
                 <Text style={styles.empEmptyText}>No pay entries yet.</Text>
               )}
 
-              {/* Employer-level quick action */}
-              <View style={{ marginTop: 10 }}>
-                <TouchableOpacity
-                  style={styles.secondaryBtn}
-                  onPress={() => openPayModal(e.id)}
-                >
-                  <Text style={styles.secondaryBtnText}>Log Paycheck for {e.name}</Text>
-                </TouchableOpacity>
-              </View>
+              {/* Employer-level action */}
+              <TouchableOpacity style={[styles.secondaryBtn, styles.mt10]} onPress={() => openPayModal(e.id)}>
+                <Text style={styles.secondaryBtnText}>Log Paycheck for {e.name}</Text>
+              </TouchableOpacity>
             </View>
           );
         })}
 
-        {/* Manage section (less prominent) */}
+        {/* Manage */}
         {hasData && (
-          <View style={{ marginTop: 8 }}>
-            <TouchableOpacity
-              style={[styles.secondaryBtn, { alignSelf: "flex-start" }]}
-              onPress={() => openEmployerModal()}
-            >
-              <Text style={styles.secondaryBtnText}>Add Another Employer</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, styles.manageBtn]}
+            onPress={() => openEmployerModal()}
+          >
+            <Text style={styles.secondaryBtnText}>Add Another Employer</Text>
+          </TouchableOpacity>
         )}
       </ScrollView>
 
-      {/* ---------- MODALS ---------- */}
-      {/* Paycheck Add/Edit */}
-      <PageSheet visible={showPayModal} onClose={() => setShowPayModal(false)} title="Paycheck">
-        <View style={styles.formRow}>
-          <Text style={styles.formLabel}>Employer</Text>
-          <Text style={styles.formHint}>
-            {activeEmployer?.name ?? employers.find((x) => x.id === activeEmployerId)?.name ?? "—"}
-          </Text>
-        </View>
+      {/* ============== MODALS ============== */}
 
-        <FormDate label="Date" value={payDate} onChange={setPayDate} />
-
-        <FormNumber label="Gross" value={gross} onChange={setGross} />
-        <FormNumber label="Taxes" value={taxes} onChange={setTaxes} />
-        <FormNumber label="Net" value={net} onChange={setNet} placeholder="(auto = gross - taxes)" />
-
-        <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowPayModal(false)}>
-            <Text style={styles.secondaryBtnText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryBtn} onPress={submitPay}>
-            <Text style={styles.primaryBtnText}>Save</Text>
-          </TouchableOpacity>
-        </View>
-      </PageSheet>
-
-      {/* Employer Add/Edit */}
-      <PageSheet
+      {/* Employer add/edit */}
+      <EmployerEditorModal
         visible={showEmployerModal}
         onClose={() => setShowEmployerModal(false)}
-        title={editingEmployer ? "Edit Employer" : "Add Employer"}
-      >
-        <FormText label="Name" value={empName} onChange={setEmpName} />
-        <FormText label="Color (hex)" value={empColor} onChange={setEmpColor} />
+        initial={
+          editingEmployer && activeEmployer
+            ? { name: activeEmployer.name, color: activeEmployer.color ?? "#007AFF", payStructure: activeEmployer.payStructure }
+            : undefined
+        }
+        onSave={handleSaveEmployer}
+      />
 
-        <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowEmployerModal(false)}>
-            <Text style={styles.secondaryBtnText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryBtn} onPress={submitEmployer}>
-            <Text style={styles.primaryBtnText}>{editingEmployer ? "Save" : "Add"}</Text>
-          </TouchableOpacity>
-        </View>
-      </PageSheet>
-
-      {/* Schedule Edit */}
-      <PageSheet
-        visible={showScheduleModal}
-        onClose={() => setShowScheduleModal(false)}
-        title="Edit Schedule"
-      >
-        {/* Frequency */}
-        <FormSelect
-          label="Pay Frequency"
-          value={freq}
-          options={[
-            { label: "Weekly", value: "weekly" },
-            { label: "Biweekly", value: "biweekly" },
-            { label: "Monthly", value: "monthly" },
-          ]}
-          onChange={(v) => setFreq(v as Schedule["payFrequency"])}
+      {/* Schedule */}
+      {activeEmployer && (
+        <ScheduleModal
+          visible={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          initial={activeEmployer.schedule}
+          onSave={handleSaveSchedule}
         />
+      )}
 
-        {/* Day fields conditional */}
-        {freq === "monthly" ? (
-          <FormNumber label="Day of Month (1-31)" value={dayOfMonth} onChange={setDayOfMonth} />
-        ) : (
-          <FormSelect
-            label="Day of Week"
-            value={dayOfWeek}
-            options={DOW_LABELS.map((d) => ({ label: capitalize(d), value: d }))}
-            onChange={(v) => setDayOfWeek(v as NonNullable<Schedule["dayOfWeek"]>)}
-          />
-        )}
-
-        {freq === "biweekly" && (
-          <FormDate
-            label="Biweekly Anchor (first known payday)"
-            value={anchor}
-            onChange={setAnchor}
-          />
-        )}
-
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <FormNumber label="Hour (0-23)" value={hour} onChange={setHour} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <FormNumber label="Minute (0-59)" value={minute} onChange={setMinute} />
-          </View>
-        </View>
-
-        <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowScheduleModal(false)}>
-            <Text style={styles.secondaryBtnText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryBtn} onPress={submitSchedule}>
-            <Text style={styles.primaryBtnText}>Save</Text>
-          </TouchableOpacity>
-        </View>
-      </PageSheet>
+      {/* Paycheck add/edit */}
+      <PaycheckModal
+        visible={showPayModal}
+        onClose={() => {
+          setEditPayInitial(undefined);
+          setShowPayModal(false);
+        }}
+        employer={activeEmployer}
+        initial={editPayInitial}
+        onSave={handleSavePay}
+      />
     </SafeAreaView>
   );
 };
 
 export default WageTrackerScreen;
 
-/* ---------- Small UI helpers (page sheet + form inputs) ---------- */
-function PageSheet({
-  visible,
-  onClose,
-  title,
-  children,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
+/* =========================================================
+   Small subcomponents & styles
+========================================================= */
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <Modal
-      visible={visible}
-      animationType={Platform.OS === "ios" ? "slide" : "fade"}
-      onRequestClose={onClose}
-      presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
-      transparent={false}
-    >
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }}>
-        <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, borderBottomColor: "#E5E7EB", borderBottomWidth: 1, backgroundColor: "#FFFFFF" }}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{title}</Text>
-        </View>
-        <ScrollView contentContainerStyle={{ padding: 20, gap: 12 }}>
-          {children}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
-function FormText({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <View style={styles.formRow}>
-      <Text style={styles.formLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
-      />
+    <View style={styles.statChip}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 }
 
-function FormNumber(props: React.ComponentProps<typeof FormText>) {
-  return <FormText {...props} placeholder={props.placeholder} />;
-}
-
-function FormDate({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  // Using simple yyyy-mm-dd text input for portability
-  return (
-    <View style={styles.formRow}>
-      <Text style={styles.formLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor="#9CA3AF"
-        autoCapitalize="none"
-      />
-    </View>
-  );
-}
-
-function FormSelect<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { label: string; value: T }[];
-  onChange: (v: T) => void;
-}) {
-  // Minimal select: horizontal pills; swap for a proper picker later
-  return (
-    <View style={styles.formRow}>
-      <Text style={styles.formLabel}>{label}</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {options.map((opt) => {
-          const active = opt.value === value;
-          return (
-            <TouchableOpacity
-              key={String(opt.value)}
-              onPress={() => onChange(opt.value)}
-              style={[
-                styles.pill,
-                { backgroundColor: active ? "#111827" : "#E5E7EB" },
-              ]}
-            >
-              <Text style={{ color: active ? "#FFFFFF" : "#111827", fontWeight: "600" }}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/* ---------- styles ---------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   scrollContent: { padding: 20, paddingBottom: 40 },
 
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: "#111827", flex: 1 },
+  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
+  headerTitle: { fontSize: 22, fontWeight: "700", color: COLORS.text, flex: 1 },
 
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#007AFF",
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -695,21 +402,21 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: "#FFFFFF", fontWeight: "700" },
 
   emptyCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 16,
-    borderColor: "#E5E7EB",
+    borderColor: COLORS.border,
     borderWidth: 1,
     marginBottom: 16,
   },
-  emptyTitle: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  emptyText: { fontSize: 13, color: "#6B7280", marginTop: 4 },
+  emptyTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+  emptyText: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
 
   banner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#E5F0FF",
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -717,7 +424,7 @@ const styles = StyleSheet.create({
     borderColor: "#C7DBFF",
     borderWidth: 1,
   },
-  bannerText: { color: "#111827", fontSize: 14, fontWeight: "500" },
+  bannerText: { color: COLORS.text, fontSize: 14, fontWeight: "500" },
   bannerStrong: { fontWeight: "800" },
 
   empCard: {
@@ -731,32 +438,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  empHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  empHeader: { flexDirection: "row", alignItems: "center" },
   empLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
-  colorDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#3B82F6" },
-  empName: { fontSize: 16, fontWeight: "700", color: "#111827" },
+  colorDot: { width: 10, height: 10, borderRadius: 5 },
+  empName: { fontSize: 16, fontWeight: "700", color: COLORS.text },
   empActions: { flexDirection: "row", gap: 8 },
   iconBtn: { padding: 6, borderRadius: 8 },
 
-  empStatsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-    flexWrap: "wrap",
-  },
+  empStatsRow: { flexDirection: "row", gap: 10, marginTop: 10, flexWrap: "wrap" },
   statChip: {
     flexGrow: 1,
     flexBasis: "30%",
-    backgroundColor: "#F3F4F6",
+    backgroundColor: COLORS.surface,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  statLabel: { fontSize: 11, color: "#6B7280" },
-  statValue: { fontSize: 14, fontWeight: "700", color: "#111827", marginTop: 2 },
+  statLabel: { fontSize: 11, color: COLORS.muted },
+  statValue: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginTop: 2 },
 
   payRow: {
     flexDirection: "row",
@@ -765,41 +464,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
   },
-  payRowText: { marginLeft: 8, color: "#111827", fontWeight: "600" },
-  empEmptyText: { color: "#6B7280", marginTop: 6 },
+  payRowText: { marginLeft: 8, color: COLORS.text, fontWeight: "600" },
+  empEmptyText: { color: COLORS.muted, marginTop: 6 },
 
-  /* form */
-  formRow: { gap: 6, marginBottom: 10 },
-  formLabel: { fontSize: 13, color: "#374151", fontWeight: "600" },
-  formHint: { fontSize: 14, color: "#111827", fontWeight: "700" },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    color: "#111827",
-  },
-  pill: {
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-
-  sheetActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 6,
-  },
   secondaryBtn: {
     borderColor: "#D1D5DB",
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
+    backgroundColor: "#FFFFFF",
   },
-  secondaryBtnText: { color: "#111827", fontWeight: "600" },
-});
+  secondaryBtnText: { color: COLORS.text, fontWeight: "600" },
 
+  /* --- extracted from former inline styles --- */
+  mt8: { marginTop: 8 },
+  mt10: { marginTop: 10 },
+  historyWrap: { marginTop: 10, gap: 8 },
+  flex1: { flex: 1 },
+  manageBtn: { alignSelf: "flex-start", marginTop: 8 },
+});

@@ -8,18 +8,26 @@ import React, {
   useState,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Employer, PayDay, Schedule } from "types/wageTracker";
+import type {
+  Employer,
+  PayDay,
+  Schedule,
+  PayBreakdownItem,
+  PayStructure,
+} from "types/wageTracker";
 
-/** Storage */
-const STORAGE_KEY = "@app:wage-tracker:v2";
+/** Storage (new) */
+const STORAGE_KEY_V3 = "@app:wage-tracker:v3";
+/** Backward-compat key from your previous version */
+const STORAGE_KEY_V2 = "@app:wage-tracker:v2";
 
+/** ---------- Local helpers/types ---------- */
 type WageTrackerState = {
   employers: Employer[];
 };
 
 const DEFAULT_STATE: WageTrackerState = { employers: [] };
 
-/** Utils */
 const DOW = [
   "sunday",
   "monday",
@@ -30,7 +38,8 @@ const DOW = [
   "saturday",
 ] as const;
 
-const dayNameToIndex = (d: NonNullable<Schedule["dayOfWeek"]>) => DOW.indexOf(d);
+const dayNameToIndex = (d: NonNullable<Schedule["dayOfWeek"]>) =>
+  DOW.indexOf(d as any);
 
 function clampDayOfMonth(year: number, monthZero: number, dom: number) {
   const lastDay = new Date(year, monthZero + 1, 0).getDate();
@@ -119,12 +128,34 @@ function computeNextPayDateForSchedule(
   return nextBiweekly(from, schedule);
 }
 
+/** ---------- Sorting/derived helpers ---------- */
 function sortHistory(h: PayDay[]) {
   return [...h].sort((a, b) => a.date - b.date);
 }
 function currencyAvg(arr: number[]) {
   if (!arr.length) return 0;
   return arr.reduce((s, n) => s + n, 0) / arr.length;
+}
+
+/** Compute gross/net from breakdown if missing */
+function deriveTotalsFromBreakdown(p: PayDay): PayDay {
+  let gross = p.gross ?? 0;
+  if ((p as any).breakdown && Array.isArray((p as any).breakdown)) {
+    const sum = (p as any).breakdown.reduce(
+      (s: number, b: PayBreakdownItem) =>
+        s + (b && typeof (b as any).amount === "number" ? (b as any).amount : 0),
+      0
+    );
+    gross = sum;
+  }
+  const taxes = typeof p.taxes === "number" ? p.taxes : 0;
+  const net = typeof p.net === "number" ? p.net : gross - taxes;
+  return { ...p, gross, taxes, net };
+}
+
+/** Provide a default pay structure when missing (migration) */
+function getDefaultPayStructure(): PayStructure {
+  return { base: "hourly", extras: [] };
 }
 
 /** Context shape */
@@ -163,7 +194,7 @@ type WageTrackerContextValue = {
 
 const WageTrackerContext = createContext<WageTrackerContextValue | null>(null);
 
-/** Provider */
+/** -------------------- Provider -------------------- */
 export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -171,61 +202,111 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   const [loading, setLoading] = useState(true);
   const hydratedRef = useRef(false);
 
-  /** IO */
-  const readFromStorage = useCallback(async (): Promise<WageTrackerState> => {
-    try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (!raw) return DEFAULT_STATE;
+  /** ------ IO (read/write with migration) ------ */
+  const parseEmployers = useCallback((parsed: any): Employer[] => {
+    const employers: Employer[] = Array.isArray(parsed?.employers)
+      ? parsed.employers.map((e: any) => {
+          const schedule: Schedule = {
+            payFrequency: (e?.schedule?.payFrequency ??
+              "biweekly") as Schedule["payFrequency"],
+            dayOfWeek: e?.schedule?.dayOfWeek,
+            dayOfMonth: e?.schedule?.dayOfMonth,
+            biweeklyAnchorDate:
+              typeof e?.schedule?.biweeklyAnchorDate === "number"
+                ? e.schedule.biweeklyAnchorDate
+                : undefined,
+            hour:
+              typeof e?.schedule?.hour === "number" ? e.schedule.hour : undefined,
+            minute:
+              typeof e?.schedule?.minute === "number"
+                ? e.schedule.minute
+                : undefined,
+          };
 
-      const parsed = JSON.parse(raw);
-      const employers: Employer[] = Array.isArray(parsed?.employers)
-        ? parsed.employers.map((e: any) => ({
+          // v2 didn't have payStructure; default it
+          const payStructure: PayStructure =
+            e?.payStructure && e?.payStructure?.base
+              ? {
+                  base: e.payStructure.base === "salary" ? "salary" : "hourly",
+                  extras: Array.isArray(e?.payStructure?.extras)
+                    ? e.payStructure.extras.map((x: any) => ({
+                        kind: x?.kind ?? "custom",
+                        label: String(x?.label ?? "Extra"),
+                      }))
+                    : [],
+                }
+              : getDefaultPayStructure();
+
+          // History migration: v2 entries had just gross/taxes/net; make a minimal breakdown
+          const history: PayDay[] = Array.isArray(e?.history)
+            ? e.history
+                .map((p: any) => {
+                  const base: PayDay = {
+                    date: Number(p?.date) || 0,
+                    gross: Number(p?.gross ?? 0),
+                    taxes: Number(p?.taxes ?? 0),
+                    net: Number(p?.net ?? 0),
+                    // v3 field—populate if provided
+                    breakdown: Array.isArray(p?.breakdown)
+                      ? p.breakdown
+                      : [
+                          {
+                            kind: "custom",
+                            label: "Pay",
+                            amount: Number(p?.gross ?? 0),
+                          } as PayBreakdownItem,
+                        ],
+                  } as any;
+                  return base.date > 0 ? deriveTotalsFromBreakdown(base) : null;
+                })
+                .filter(Boolean) as PayDay[]
+            : [];
+
+          return {
             id: String(e?.id ?? ""),
             name: String(e?.name ?? "Employer"),
             color: e?.color ? String(e.color) : undefined,
-            schedule: {
-              payFrequency: (e?.schedule?.payFrequency ??
-                "biweekly") as Schedule["payFrequency"],
-              dayOfWeek: e?.schedule?.dayOfWeek,
-              dayOfMonth: e?.schedule?.dayOfMonth,
-              biweeklyAnchorDate:
-                typeof e?.schedule?.biweeklyAnchorDate === "number"
-                  ? e.schedule.biweeklyAnchorDate
-                  : undefined,
-              hour:
-                typeof e?.schedule?.hour === "number"
-                  ? e.schedule.hour
-                  : undefined,
-              minute:
-                typeof e?.schedule?.minute === "number"
-                  ? e.schedule.minute
-                  : undefined,
-            },
-            history: Array.isArray(e?.history)
-              ? e.history
-                  .map((p: any) => ({
-                    date: Number(p?.date) || 0,
-                    gross: Number(p?.gross) || 0,
-                    taxes: Number(p?.taxes) || 0,
-                    net: Number(p?.net) || 0,
-                  }))
-                  .filter((p: PayDay) => p.date > 0)
-              : [],
-          }))
-        : [];
+            schedule,
+            payStructure,
+            history,
+          } as Employer;
+        })
+      : [];
 
-      for (const emp of employers) emp.history = sortHistory(emp.history);
-      return { employers };
+    for (const emp of employers) emp.history = sortHistory(emp.history);
+    return employers;
+  }, []);
+
+  const readFromStorage = useCallback(async (): Promise<WageTrackerState> => {
+    try {
+      // Prefer v3; if missing, try v2 and migrate
+      const rawV3 = await AsyncStorage.getItem(STORAGE_KEY_V3);
+      if (rawV3) {
+        const parsed = JSON.parse(rawV3);
+        return { employers: parseEmployers(parsed) };
+      }
+      const rawV2 = await AsyncStorage.getItem(STORAGE_KEY_V2);
+      if (rawV2) {
+        const parsed = JSON.parse(rawV2);
+        const employers = parseEmployers(parsed);
+        // Save migrated data into v3 key
+        await AsyncStorage.setItem(
+          STORAGE_KEY_V3,
+          JSON.stringify({ employers })
+        );
+        return { employers };
+      }
+      return DEFAULT_STATE;
     } catch {
       return DEFAULT_STATE;
     }
-  }, []);
+  }, [parseEmployers]);
 
   const writeToStorage = useCallback(async (next: WageTrackerState) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      await AsyncStorage.setItem(STORAGE_KEY_V3, JSON.stringify(next));
     } catch {
-      // optionally log
+      // ignore
     }
   }, []);
 
@@ -245,7 +326,7 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     writeToStorage(state).catch(() => {});
   }, [state, writeToStorage]);
 
-  /** Shared helper to mutate one employer (stable) */
+  /** Stable employer mutation */
   const mutateEmployer = useCallback(
     (id: string, mut: (e: Employer) => Employer) => {
       setState((prev) => {
@@ -258,12 +339,15 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     [writeToStorage]
   );
 
-  /** Employer CRUD */
+  /** ---------- Employer CRUD ---------- */
   const addEmployer = useCallback(
     async (emp: Omit<Employer, "history"> & { history?: PayDay[] }) => {
       const withHistory: Employer = {
         ...emp,
-        history: sortHistory(emp.history ?? []),
+        payStructure: emp.payStructure ?? getDefaultPayStructure(),
+        history: sortHistory(
+          (emp.history ?? []).map(deriveTotalsFromBreakdown)
+        ),
       };
       setState((prev) => {
         const next = { employers: [...prev.employers, withHistory] };
@@ -285,7 +369,15 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
                   ...e,
                   ...patch,
                   schedule: { ...e.schedule, ...(patch.schedule ?? {}) },
-                  history: patch.history ? sortHistory(patch.history) : e.history,
+                  payStructure: {
+                    ...e.payStructure,
+                    ...(patch.payStructure ?? {}),
+                    extras:
+                      patch.payStructure?.extras ?? e.payStructure.extras,
+                  },
+                  history: patch.history
+                    ? sortHistory(patch.history.map(deriveTotalsFromBreakdown))
+                    : e.history,
                 }
               : e
           ),
@@ -308,14 +400,15 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     [writeToStorage]
   );
 
-  /** Paydays per employer */
+  /** ---------- Paydays ---------- */
   const addPayday = useCallback(
     async (employerId: string, entry: PayDay, replaceIfSameDate = false) => {
+      const normalized = deriveTotalsFromBreakdown(entry);
       mutateEmployer(employerId, (e) => {
         const filtered = replaceIfSameDate
-          ? e.history.filter((p) => p.date !== entry.date)
+          ? e.history.filter((p) => p.date !== normalized.date)
           : e.history;
-        return { ...e, history: sortHistory([...filtered, entry]) };
+        return { ...e, history: sortHistory([...filtered, normalized]) };
       });
     },
     [mutateEmployer]
@@ -342,13 +435,13 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     async (employerId: string, nextHist: PayDay[]) => {
       mutateEmployer(employerId, (e) => ({
         ...e,
-        history: sortHistory(nextHist),
+        history: sortHistory(nextHist.map(deriveTotalsFromBreakdown)),
       }));
     },
     [mutateEmployer]
   );
 
-  /** Derived */
+  /** ---------- Derived ---------- */
   const nextPayDates = useMemo(() => {
     const arr: { employerId: string; date: Date }[] = [];
     for (const e of state.employers) {
@@ -403,6 +496,7 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 /** Hook */
 export function useWageTracker() {
   const ctx = useContext(WageTrackerContext);
-  if (!ctx) throw new Error("useWageTracker must be used within a WageTrackerProvider");
+  if (!ctx)
+    throw new Error("useWageTracker must be used within a WageTrackerProvider");
   return ctx;
 }

@@ -1,17 +1,23 @@
+// types/wageTracker.ts
+
+/** Payday entry */
 export type PayDay = {
   /** Epoch ms (local) when pay was received or posted */
   date: number;
+
+  /** Line-items that sum to gross (driven by employer's payStructure) */
+  breakdown: PayBreakdownItem[];
+
+  /** Derived but stored for convenience/history charts */
   gross: number;
   taxes: number;
-  net: number;
+  net: number; // = gross - taxes
 };
 
+/** Recurrence cadence */
 export type PayFrequency = 'weekly' | 'biweekly' | 'monthly';
 
-/**
- * When pay occurs. For biweekly you can (optionally) provide an anchor date to
- * lock the alternating weeks. If omitted, "next weekday" logic is used.
- */
+/** Schedule for when pay lands */
 export type Schedule = {
   payFrequency: PayFrequency;
 
@@ -21,21 +27,60 @@ export type Schedule = {
   /** For monthly (1..31). If the month is shorter, use the last valid day. */
   dayOfMonth?: number;
 
-  /**
-   * Optional: anchor date (epoch ms) for biweekly cadence alignment.
-   * Example: your known last/first payday — repeats every 14 days from this.
-   */
+  /** Anchor date (epoch ms) to align the 14-day cadence for biweekly */
   biweeklyAnchorDate?: number;
 
-  /** Optional time to schedule reminders (24h clock). Defaults to 9:00 */
-  hour?: number;      // 0..23
-  minute?: number;    // 0..59
+  /** Optional reminder time (24h clock). Defaults to 9:00 */
+  hour?: number;   // 0..23
+  minute?: number; // 0..59
 };
 
+/** Supported components for compensation */
+export type PayComponentKind =
+  | 'hourly'     // base (hours × rate)
+  | 'salary'     // base (flat amount)
+  | 'commission' // extra
+  | 'tips'       // extra
+  | 'bonus'      // extra
+  | 'custom';    // extra with custom label (e.g., SPIFF)
+
+/** Employer-level pay structure */
+export type PayStructure = {
+  /** Choose exactly one base type */
+  base: 'hourly' | 'salary';
+
+  /**
+   * Extra components available for this employer.
+   * Example: [{ kind:'commission', label:'Commission' }, { kind:'custom', label:'SPIFF' }]
+   */
+  extras: Array<{ kind: Exclude<PayComponentKind, 'hourly' | 'salary'>; label: string }>;
+};
+
+/** Per-payday breakdown item */
+export type PayBreakdownItem =
+  | {
+      kind: 'hourly';
+      label: 'Hourly';
+      hours: number;
+      rate: number;
+      amount: number; // hours * rate
+    }
+  | {
+      kind: 'salary';
+      label: 'Salary';
+      amount: number;
+    }
+  | {
+      kind: Exclude<PayComponentKind, 'hourly' | 'salary'>; // commission | tips | bonus | custom
+      label: string; // e.g., Commission, Tips, SPIFF
+      amount: number;
+    };
+
 export type Employer = {
-  id: string;          // e.g., uuid
-  name: string;        // "Starbucks", "Freelance", etc.
-  color?: string;      // optional accent color for UI
-  schedule: Schedule;  // how this source pays you
-  history: PayDay[];   // paychecks for this employer
+  id: string;          // uuid or similar
+  name: string;        // "CycleGear", etc.
+  color?: string;      // UI accent
+  schedule: Schedule;  // when this source pays you
+  payStructure: PayStructure; // how this job pays you
+  history: PayDay[];   // paychecks
 };
