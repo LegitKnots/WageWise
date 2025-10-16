@@ -14,26 +14,23 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ChevronRight, Bell, User, Check } from "lucide-react-native";
+import { ChevronRight, Bell, User, Check, Trash2, Palette } from "lucide-react-native";
 import { useUser } from "context/user";
+import { useWageTracker } from "context/wageTracker";
+import { useTheme } from "context/ThemeContext";
+import NotificationService from "services/NotificationService";
 
 /* ------------ Settings types & storage ------------ */
-type AlertTiming = "twoHoursAfter" | "eightAmSameDay" | "noonDayAfter";
-type AppSettings = { notificationsEnabled: boolean; alertTiming: AlertTiming };
+type AppSettings = { 
+  notificationsEnabled: boolean; 
+  employerNotifications: Record<string, boolean>; // employerId -> enabled
+};
 
 const SETTINGS_KEY = "@app:settings:v1";
 const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: true,
-  alertTiming: "eightAmSameDay",
+  employerNotifications: {},
 };
-
-const TIMING_OPTIONS: { label: string; value: AlertTiming; helper?: string }[] = [
-  { label: "2 hours after payday", value: "twoHoursAfter", helper: "Good if pay posts midday" },
-  { label: "8:00 AM on payday", value: "eightAmSameDay", helper: "Morning prompt" },
-  { label: "12:00 PM next day", value: "noonDayAfter", helper: "If pay posts overnight" },
-];
-
-const timingLabel = (val: AlertTiming) => TIMING_OPTIONS.find(o => o.value === val)?.label ?? "";
 
 /* ------------ PageSheet wrapper ------------ */
 function PageSheet({
@@ -47,6 +44,8 @@ function PageSheet({
   title: string;
   children: React.ReactNode;
 }) {
+  const { colors } = useTheme();
+  
   return (
     <Modal
       visible={visible}
@@ -55,9 +54,9 @@ function PageSheet({
       onRequestClose={onClose}
       transparent={false}
     >
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }}>
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>{title}</Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sheetTitle, { color: colors.text }]}>{title}</Text>
         </View>
         <ScrollView contentContainerStyle={styles.sheetBody}>{children}</ScrollView>
       </SafeAreaView>
@@ -68,7 +67,9 @@ function PageSheet({
 /* ------------ Main Screen ------------ */
 const SettingsScreen = () => {
   // user
-  const { user, updateFirstName, updateLastName } = useUser();
+  const { user, updateFirstName, updateLastName, reset: resetUser } = useUser();
+  const { employers } = useWageTracker();
+  const { colors, mode, setThemeMode } = useTheme();
 
   // settings
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -77,12 +78,13 @@ const SettingsScreen = () => {
   // modals
   const [showName, setShowName] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showTheme, setShowTheme] = useState(false);
 
   // local form states
   const [firstName, setFirstName] = useState(user.firstName || "");
   const [lastName, setLastName] = useState(user.lastName || "");
   const [notifEnabled, setNotifEnabled] = useState<boolean>(DEFAULT_SETTINGS.notificationsEnabled);
-  const [notifTiming, setNotifTiming] = useState<AlertTiming>(DEFAULT_SETTINGS.alertTiming);
+  const [employerNotifStates, setEmployerNotifStates] = useState<Record<string, boolean>>({});
 
   /* Load persisted settings once */
   const loadSettings = useCallback(async () => {
@@ -92,15 +94,13 @@ const SettingsScreen = () => {
       const next: AppSettings = {
         notificationsEnabled:
           typeof parsed.notificationsEnabled === "boolean" ? parsed.notificationsEnabled : DEFAULT_SETTINGS.notificationsEnabled,
-        alertTiming: (parsed.alertTiming as AlertTiming) || DEFAULT_SETTINGS.alertTiming,
+        employerNotifications: parsed.employerNotifications || DEFAULT_SETTINGS.employerNotifications,
       };
       setSettings(next);
       setNotifEnabled(next.notificationsEnabled);
-      setNotifTiming(next.alertTiming);
     } catch {
       setSettings(DEFAULT_SETTINGS);
       setNotifEnabled(DEFAULT_SETTINGS.notificationsEnabled);
-      setNotifTiming(DEFAULT_SETTINGS.alertTiming);
     } finally {
       setLoading(false);
     }
@@ -125,8 +125,11 @@ const SettingsScreen = () => {
 
   const notifSummary = useMemo(() => {
     if (!settings.notificationsEnabled) return "Off";
-    return timingLabel(settings.alertTiming);
-  }, [settings]);
+    const enabledCount = Object.values(settings.employerNotifications).filter(Boolean).length;
+    const totalCount = employers.length;
+    if (totalCount === 0) return "No employers";
+    return `${enabledCount}/${totalCount} employers`;
+  }, [settings, employers.length]);
 
   /* Actions */
   const openName = () => {
@@ -143,72 +146,166 @@ const SettingsScreen = () => {
 
   const openNotifications = () => {
     setNotifEnabled(settings.notificationsEnabled);
-    setNotifTiming(settings.alertTiming);
+    setEmployerNotifStates(settings.employerNotifications);
     setShowNotifications(true);
   };
 
   const saveNotifications = async () => {
-    await saveSettings({ notificationsEnabled: notifEnabled, alertTiming: notifTiming });
+    await saveSettings({ 
+      notificationsEnabled: notifEnabled, 
+      employerNotifications: employerNotifStates 
+    });
+    
+    if (notifEnabled) {
+      await NotificationService.initialize();
+      await NotificationService.requestPermissions();
+    } else {
+      NotificationService.cancelAllReminders();
+    }
+    
     setShowNotifications(false);
+  };
+
+  const toggleEmployerNotification = (employerId: string) => {
+    setEmployerNotifStates(prev => ({
+      ...prev,
+      [employerId]: !prev[employerId]
+    }));
+  };
+
+  const handleResetApp = () => {
+    Alert.alert(
+      'Reset App Data',
+      'This will delete all your data including employers, paychecks, and settings. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reset', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              // Clear all app data
+              await AsyncStorage.multiRemove([
+                '@app:user',
+                '@app:wageTracker:v3',
+                '@app:settings:v1',
+                '@app:onboarding_completed'
+              ]);
+              
+              // Reset user context
+              await resetUser();
+              
+              // Cancel all notifications
+              NotificationService.cancelAllReminders();
+              
+              Alert.alert('Success', 'App data has been reset. Please restart the app.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to reset app data. Please try again.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   /* UI */
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.header}>Settings</Text>
+        <Text style={[styles.header, { color: colors.text }]}>Settings</Text>
 
         {/* List of options */}
-        <View style={styles.listCard}>
+        <View style={[styles.listCard, { backgroundColor: colors.card }]}>
+                  <ListItem
+                    icon={<User size={18} color={colors.primary} />}
+                    title="Name"
+                    subtitle={nameSummary}
+                    onPress={openName}
+                  />
+                  <Separator />
+                  <ListItem
+                    icon={<Bell size={18} color={colors.primary} />}
+                    title="Notifications"
+                    subtitle={notifSummary}
+                    onPress={openNotifications}
+                  />
+                  <Separator />
+                  <ListItem
+                    icon={<Bell size={18} color={colors.primary} />}
+                    title="Test Notification"
+                    subtitle="Send a test notification"
+                    onPress={async () => {
+                      await NotificationService.testNotification();
+                    }}
+                  />
+                  <Separator />
+                  <ListItem
+                    icon={<Palette size={18} color={colors.primary} />}
+                    title="Theme"
+                    subtitle={mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light'}
+                    onPress={() => setShowTheme(true)}
+                  />
+        </View>
+
+        {/* Advanced Settings */}
+        <View style={[styles.listCard, { backgroundColor: colors.card }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Advanced</Text>
           <ListItem
-            icon={<User size={18} color="#111827" />}
-            title="Name"
-            subtitle={nameSummary}
-            onPress={openName}
-          />
-          <Separator />
-          <ListItem
-            icon={<Bell size={18} color="#111827" />}
-            title="Notifications"
-            subtitle={notifSummary}
-            onPress={openNotifications}
+            icon={<Trash2 size={18} color={colors.error} />}
+            title="Reset App Data"
+            subtitle={`${employers.length} employers, all paychecks`}
+            onPress={handleResetApp}
           />
         </View>
 
         {!loading && (
-          <Text style={styles.footerNote}>Settings are saved locally on this device.</Text>
+          <Text style={[styles.footerNote, { color: colors.textMuted }]}>Settings are saved locally on this device.</Text>
         )}
       </ScrollView>
 
       {/* -------- Name Modal -------- */}
       <PageSheet visible={showName} onClose={() => setShowName(false)} title="Edit Name">
         <View style={styles.formRow}>
-          <Text style={styles.formLabel}>First name</Text>
+          <Text style={[styles.formLabel, { color: colors.text }]}>First name</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { 
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              color: colors.text 
+            }]}
             value={firstName}
             onChangeText={setFirstName}
             placeholder="First name"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
           />
         </View>
         <View style={styles.formRow}>
-          <Text style={styles.formLabel}>Last name</Text>
+          <Text style={[styles.formLabel, { color: colors.text }]}>Last name</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { 
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              color: colors.text 
+            }]}
             value={lastName}
             onChangeText={setLastName}
             placeholder="Last name"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
           />
         </View>
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowName(false)}>
-            <Text style={styles.secondaryBtnText}>Cancel</Text>
+          <TouchableOpacity 
+            style={[styles.secondaryBtn, { borderColor: colors.border }]} 
+            onPress={() => setShowName(false)}
+          >
+            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryBtn} onPress={saveName}>
+          <TouchableOpacity 
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]} 
+            onPress={saveName}
+          >
             <Text style={styles.primaryBtnText}>Save</Text>
           </TouchableOpacity>
         </View>
@@ -217,43 +314,117 @@ const SettingsScreen = () => {
       {/* -------- Notifications Modal -------- */}
       <PageSheet visible={showNotifications} onClose={() => setShowNotifications(false)} title="Notifications">
         <View style={[styles.formRow, styles.switchRow]}>
-          <Text style={styles.formLabel}>Enable notifications</Text>
-          <Switch value={notifEnabled} onValueChange={setNotifEnabled} />
+          <Text style={[styles.formLabel, { color: colors.text }]}>Enable notifications</Text>
+          <Switch 
+            value={notifEnabled} 
+            onValueChange={setNotifEnabled}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+          />
         </View>
 
-        <Text style={[styles.sectionLabel, { marginTop: 6, opacity: notifEnabled ? 1 : 0.5 }]}>
-          Reminder timing
+        <Text style={[
+          styles.sectionLabel, 
+          { 
+            marginTop: 16, 
+            marginBottom: 12,
+            opacity: notifEnabled ? 1 : 0.5,
+            color: colors.text 
+          }
+        ]}>
+          Notify for these employers
+        </Text>
+
+        {employers.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+              No employers added yet. Add employers in the Wage Tracker to configure notifications.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.optionGroup}>
+            {employers.map((employer, index) => {
+              const isEnabled = employerNotifStates[employer.id] || false;
+              return (
+                <View
+                  key={employer.id}
+                  style={[
+                    styles.optionRow,
+                    { 
+                      opacity: notifEnabled ? 1 : 0.5,
+                      borderBottomColor: colors.border,
+                      borderBottomWidth: index === employers.length - 1 ? 0 : 1
+                    },
+                  ]}
+                >
+                  <View style={styles.employerRow}>
+                    <View style={[styles.employerColor, { backgroundColor: employer.color }]} />
+                    <Text style={[styles.optionTitle, { color: colors.text }]}>{employer.name}</Text>
+                  </View>
+                  <Switch
+                    value={isEnabled}
+                    onValueChange={() => toggleEmployerNotification(employer.id)}
+                    disabled={!notifEnabled}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        <View style={styles.sheetActions}>
+          <TouchableOpacity 
+            style={[styles.secondaryBtn, { borderColor: colors.border }]} 
+            onPress={() => setShowNotifications(false)}
+          >
+            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]} 
+            onPress={saveNotifications}
+          >
+            <Text style={styles.primaryBtnText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+      </PageSheet>
+
+      {/* -------- Theme Modal -------- */}
+      <PageSheet visible={showTheme} onClose={() => setShowTheme(false)} title="Theme">
+        <Text style={[styles.sectionLabel, { marginBottom: 12, color: colors.text }]}>
+          Choose your preferred theme
         </Text>
 
         <View style={styles.optionGroup}>
-          {TIMING_OPTIONS.map((opt) => {
-            const active = notifTiming === opt.value;
+          {[
+            { value: 'light', label: 'Light', description: 'Always use light theme' },
+            { value: 'dark', label: 'Dark', description: 'Always use dark theme' },
+            { value: 'system', label: 'System', description: 'Follow system setting' },
+          ].map((option) => {
+            const active = mode === option.value;
             return (
               <TouchableOpacity
-                key={opt.value}
-                disabled={!notifEnabled}
-                onPress={() => setNotifTiming(opt.value)}
-                style={[
-                  styles.optionRow,
-                  { opacity: notifEnabled ? 1 : 0.5 },
-                ]}
+                key={option.value}
+                onPress={() => setThemeMode(option.value as any)}
+                style={[styles.optionRow, { borderBottomColor: colors.border }]}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.optionTitle}>{opt.label}</Text>
-                  {opt.helper ? <Text style={styles.optionHelper}>{opt.helper}</Text> : null}
+                  <Text style={[styles.optionTitle, { color: colors.text }]}>{option.label}</Text>
+                  <Text style={[styles.optionHelper, { color: colors.textMuted }]}>{option.description}</Text>
                 </View>
-                {active ? <Check size={20} color="#007AFF" /> : null}
+                {active ? <Check size={20} color={colors.primary} /> : null}
               </TouchableOpacity>
             );
           })}
         </View>
 
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowNotifications(false)}>
-            <Text style={styles.secondaryBtnText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryBtn} onPress={saveNotifications}>
-            <Text style={styles.primaryBtnText}>Save</Text>
+          <TouchableOpacity 
+            style={[styles.secondaryBtn, { borderColor: colors.border }]} 
+            onPress={() => setShowTheme(false)}
+          >
+            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Done</Text>
           </TouchableOpacity>
         </View>
       </PageSheet>
@@ -275,32 +446,34 @@ function ListItem({
   subtitle?: string;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  
   return (
     <TouchableOpacity onPress={onPress} style={styles.listItem}>
       <View style={styles.listLeft}>
-        {icon ? <View style={styles.iconWrap}>{icon}</View> : null}
+        {icon ? <View style={[styles.iconWrap, { backgroundColor: colors.surface }]}>{icon}</View> : null}
         <View style={{ flex: 1 }}>
-          <Text style={styles.listTitle}>{title}</Text>
-          {!!subtitle && <Text style={styles.listSubtitle}>{subtitle}</Text>}
+          <Text style={[styles.listTitle, { color: colors.text }]}>{title}</Text>
+          {!!subtitle && <Text style={[styles.listSubtitle, { color: colors.textMuted }]}>{subtitle}</Text>}
         </View>
       </View>
-      <ChevronRight size={18} color="#9CA3AF" />
+      <ChevronRight size={18} color={colors.textMuted} />
     </TouchableOpacity>
   );
 }
 
 function Separator() {
-  return <View style={styles.separator} />;
+  const { colors } = useTheme();
+  return <View style={[styles.separator, { backgroundColor: colors.border }]} />;
 }
 
 /* ------------ styles ------------ */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40, gap: 14 },
-  header: { fontSize: 22, fontWeight: "700", color: "#111827" },
+  header: { fontSize: 22, fontWeight: "700" },
 
   listCard: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     overflow: "hidden",
     shadowColor: "#000",
@@ -321,48 +494,41 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
   },
-  listTitle: { color: "#111827", fontSize: 15, fontWeight: "600" },
-  listSubtitle: { color: "#6B7280", fontSize: 12, marginTop: 2 },
-  separator: { height: 1, backgroundColor: "#E5E7EB" },
+  listTitle: { fontSize: 15, fontWeight: "600" },
+  listSubtitle: { fontSize: 12, marginTop: 2 },
+  separator: { height: 1 },
 
-  footerNote: { fontSize: 12, color: "#6B7280", textAlign: "center", marginTop: 8 },
+  footerNote: { fontSize: 12, textAlign: "center", marginTop: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12, marginTop: 20, paddingHorizontal: 16 },
 
   /* page sheet */
   sheetHeader: {
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 14,
-    borderBottomColor: "#E5E7EB",
     borderBottomWidth: 1,
-    backgroundColor: "#FFFFFF",
   },
-  sheetTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
+  sheetTitle: { fontSize: 18, fontWeight: "700" },
   sheetBody: { padding: 20, gap: 12 },
 
   /* forms */
   formRow: { gap: 6 },
-  formLabel: { fontSize: 13, color: "#374151", fontWeight: "600" },
+  formLabel: { fontSize: 13, fontWeight: "600" },
   input: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D1D5DB",
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    color: "#111827",
   },
   switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
 
-  sectionLabel: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  sectionLabel: { fontSize: 13, fontWeight: "600" },
 
   optionGroup: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    borderColor: "#E5E7EB",
     borderWidth: 1,
     overflow: "hidden",
   },
@@ -371,22 +537,45 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
+    borderBottomWidth: 1,
   },
-  optionTitle: { color: "#111827", fontSize: 14, fontWeight: "600" },
-  optionHelper: { color: "#6B7280", fontSize: 12 },
+  optionTitle: { fontSize: 14, fontWeight: "600" },
+  optionHelper: { fontSize: 12 },
+  
+  /* employer notification rows */
+  employerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  employerColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  emptyState: {
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
 
   /* buttons */
   sheetActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
   secondaryBtn: {
-    borderColor: "#D1D5DB",
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  secondaryBtnText: { color: "#111827", fontWeight: "600" },
+  secondaryBtnText: { fontWeight: "600" },
   primaryBtn: {
-    backgroundColor: "#007AFF",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,

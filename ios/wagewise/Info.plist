@@ -55,5 +55,12 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>background-processing</string>
+		<string>background-fetch</string>
+	</array>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>WageWise would like to send you payday reminders and notifications to help you stay on top of your income tracking.</string>
 </dict>
 </plist>

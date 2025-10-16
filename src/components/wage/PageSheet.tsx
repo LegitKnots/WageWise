@@ -1,7 +1,7 @@
 import React from "react";
 import { Modal, Platform, ScrollView, View, Text, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COLORS } from "./theme";
+import { useTheme } from "context/ThemeContext";
 
 type Props = {
   visible: boolean;
@@ -11,6 +11,32 @@ type Props = {
 };
 
 export default function PageSheet({ visible, onClose, title, children }: Props) {
+  const { colors } = useTheme();
+  
+  const styles = StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      paddingBottom: 14,
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      backgroundColor: colors.card,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    content: {
+      padding: 20,
+      paddingBottom: 100, // Extra padding to push content up when keyboard appears
+    },
+  });
+
   return (
     <Modal
       visible={visible}
@@ -22,7 +48,11 @@ export default function PageSheet({ visible, onClose, title, children }: Props) 
         <View style={styles.header}>
           <Text style={styles.title}>{title}</Text>
         </View>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView 
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           {children}
         </ScrollView>
       </SafeAreaView>
@@ -30,26 +60,3 @@ export default function PageSheet({ visible, onClose, title, children }: Props) 
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 14,
-    borderBottomColor: COLORS.border,
-    borderBottomWidth: 1,
-    backgroundColor: COLORS.card,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  content: {
-    padding: 20,
-    gap: 12,
-  },
-});

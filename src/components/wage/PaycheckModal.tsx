@@ -1,44 +1,52 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import PageSheet from "./PageSheet";
-import { FormNumber, InlineDate, Divider } from "./forms";
-import { COLORS } from "./theme";
+import { FormNumber, InlineDate, Divider, EmployerDropdown } from "./forms";
+import { ButtonPrimary, ButtonSecondary } from "../ui";
+import { useTheme } from "context/ThemeContext";
 import type { Employer, PayDay, PayBreakdownItem } from "types/wageTracker";
 
 export default function PaycheckModal({
   visible,
   onClose,
-  employer,
+  employers,
+  selectedEmployerId,
+  onEmployerSelect,
   initial, // optional edit
   onSave,
 }: {
   visible: boolean;
   onClose: () => void;
-  employer: Employer | null;
+  employers: Employer[];
+  selectedEmployerId: string | null;
+  onEmployerSelect: (id: string) => void;
   initial?: PayDay;
   onSave: (entry: PayDay) => void;
 }) {
+  const { colors } = useTheme();
+  const selectedEmployer = employers.find(emp => emp.id === selectedEmployerId);
+  
   const [date, setDate] = React.useState<Date>(initial ? new Date(initial.date) : new Date());
   const [hours, setHours] = React.useState(String(getHourly(initial)?.hours ?? 0));
-  const [rate, setRate] = React.useState(String(getHourly(initial)?.rate ?? employer?.payStructure?.defaultRate ?? 0));
+  const [rate, setRate] = React.useState(String(getHourly(initial)?.rate ?? selectedEmployer?.payStructure?.defaultRate ?? 0));
   const [baseAmt, setBaseAmt] = React.useState(String(getSalary(initial)?.amount ?? 0));
   const [taxes, setTaxes] = React.useState(String(initial?.taxes ?? 0));
   const [extras, setExtras] = React.useState<Record<string, string>>(
     initial
       ? toExtraMap(initial)
-      : Object.fromEntries((employer?.payStructure.extras || []).map((x) => [x.label, "0"]))
+      : Object.fromEntries((selectedEmployer?.payStructure.extras || []).map((x) => [x.label, "0"]))
   );
 
   // Reset form when modal opens or employer changes
   React.useEffect(() => {
     if (!visible) return;
     
-    const defaultRate = employer?.payStructure?.defaultRate;
+    const defaultRate = selectedEmployer?.payStructure?.defaultRate;
     const initialRate = getHourly(initial)?.rate;
     const finalRate = initialRate ?? defaultRate ?? 0;
     
     console.log('PaycheckModal reset:', {
-      employerName: employer?.name,
+      employerName: selectedEmployer?.name,
       defaultRate,
       initialRate,
       finalRate,
@@ -53,37 +61,70 @@ export default function PaycheckModal({
     setExtras(
       initial
         ? toExtraMap(initial)
-        : Object.fromEntries((employer?.payStructure.extras || []).map((x) => [x.label, "0"]))
+        : Object.fromEntries((selectedEmployer?.payStructure.extras || []).map((x) => [x.label, "0"]))
     );
-  }, [visible, initial, employer?.payStructure?.defaultRate, employer?.payStructure?.extras]);
+  }, [visible, initial, selectedEmployer?.payStructure?.defaultRate, selectedEmployer?.payStructure?.extras]);
 
-  if (!employer) return null;
+  // Handle employer selection change
+  const handleEmployerSelect = (id: string) => {
+    onEmployerSelect(id);
+    const newEmployer = employers.find(emp => emp.id === id);
+    if (newEmployer) {
+      // Reset form with new employer's defaults
+      setRate(String(newEmployer.payStructure?.defaultRate ?? 0));
+      setExtras(Object.fromEntries((newEmployer.payStructure.extras || []).map((x) => [x.label, "0"])));
+    }
+  };
 
-  const gross = computeGross(employer, { hours, rate, baseAmt, extras });
+  if (!selectedEmployer) return null;
+
+  const gross = computeGross(selectedEmployer, { hours, rate, baseAmt, extras });
   const net = gross - Number(taxes || 0);
+
+  const styles = StyleSheet.create({
+    label: { fontSize: 13, color: colors.textMuted, fontWeight: "600", marginBottom: 12 },
+    employerLabel: { fontSize: 14, color: colors.text, fontWeight: "700", marginBottom: 16 },
+    mt16: { marginTop: 16 },
+
+    row: { flexDirection: "row", gap: 10, marginBottom: 16 },
+    col: { flex: 1 },
+
+    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 16 },
+  });
 
   return (
     <PageSheet visible={visible} onClose={onClose} title="Paycheck">
       <Text style={styles.label}>Employer</Text>
-      <Text style={styles.employerName}>{employer?.name ?? "—"}</Text>
+      <EmployerDropdown
+        employers={employers.map(emp => ({ 
+          id: emp.id, 
+          name: emp.name, 
+          color: emp.color || '#007AFF' 
+        }))}
+        selectedId={selectedEmployerId}
+        onSelect={handleEmployerSelect}
+        placeholder="Select employer"
+      />
 
       <Text style={styles.label}>Date</Text>
       <InlineDate value={date} onChange={(d) => setDate(d || new Date())} />
 
-      {employer.payStructure.base === "hourly" ? (
-        <View style={styles.row}>
-          <View style={styles.col}>
-            <FormNumber label="Hours" value={hours} onChange={setHours} />
+      <View style={styles.mt16}>
+        {selectedEmployer.payStructure.base === "hourly" ? (
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <FormNumber label="Hours" value={hours} onChange={setHours} />
+            </View>
+            <View style={styles.col}>
+              <FormNumber label="Rate" value={rate} onChange={setRate} />
+            </View>
           </View>
-          <View style={styles.col}>
-            <FormNumber label="Rate" value={rate} onChange={setRate} />
-          </View>
-        </View>
-      ) : (
-        <FormNumber label="Base Amount" value={baseAmt} onChange={setBaseAmt} />
-      )}
+        ) : (
+          <FormNumber label="Base Amount" value={baseAmt} onChange={setBaseAmt} />
+        )}
+      </View>
 
-      {(employer.payStructure.extras || []).map((ex) => (
+      {(selectedEmployer.payStructure.extras || []).map((ex) => (
         <FormNumber
           key={ex.label}
           label={ex.label}
@@ -94,9 +135,9 @@ export default function PaycheckModal({
 
       <Divider />
 
-      <Row label="Gross" value={gross} bold />
       <FormNumber label="Taxes" value={taxes} onChange={setTaxes} />
-      <Row label="Net" value={net} bold big />
+      <Row label="Gross" value={gross} bold colors={colors} />
+      <Row label="Net" value={net} bold big colors={colors} />
 
       <View style={styles.actions}>
         <ButtonSecondary label="Cancel" onPress={onClose} />
@@ -104,14 +145,14 @@ export default function PaycheckModal({
           label="Save"
           onPress={() => {
             const breakdown: PayBreakdownItem[] = [];
-            if (employer.payStructure.base === "hourly") {
+            if (selectedEmployer.payStructure.base === "hourly") {
               const h = Number(hours || 0);
               const r = Number(rate || 0);
               breakdown.push({ kind: "hourly", label: "Hourly", hours: h, rate: r, amount: h * r });
             } else {
               breakdown.push({ kind: "salary", label: "Salary", amount: Number(baseAmt || 0) });
             }
-            for (const e of employer.payStructure.extras) {
+            for (const e of selectedEmployer.payStructure.extras) {
               breakdown.push({ kind: e.kind, label: e.label, amount: Number(extras[e.label] || 0) });
             }
             const entry: PayDay = {
@@ -148,11 +189,11 @@ function toExtraMap(p: PayDay) {
   return m;
 }
 function computeGross(
-  employer: Employer,
+  selectedEmployer: Employer,
   state: { hours: string; rate: string; baseAmt: string; extras: Record<string, string> }
 ) {
   let g = 0;
-  if (employer.payStructure.base === "hourly") {
+  if (selectedEmployer.payStructure.base === "hourly") {
     g += Number(state.hours || 0) * Number(state.rate || 0);
   } else {
     g += Number(state.baseAmt || 0);
@@ -161,7 +202,21 @@ function computeGross(
   return g;
 }
 
-function Row({ label, value, bold, big }: { label: string; value: number; bold?: boolean; big?: boolean }) {
+function Row({ label, value, bold, big, colors }: { label: string; value: number; bold?: boolean; big?: boolean; colors: any }) {
+  const styles = StyleSheet.create({
+    totalRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 8,
+      marginBottom: 8,
+    },
+    totalLabel: { color: colors.textMuted, fontWeight: "600" },
+    totalValue: { color: colors.text, fontWeight: "700", fontSize: 14 },
+    totalValueBold: { fontWeight: "800" },
+    totalValueBig: { fontSize: 16 },
+  });
+
   return (
     <View style={styles.totalRow}>
       <Text style={styles.totalLabel}>{label}</Text>
@@ -176,57 +231,4 @@ function Row({ label, value, bold, big }: { label: string; value: number; bold?:
   );
 }
 
-function ButtonSecondary({ onPress, label }: { onPress: () => void; label: string }) {
-  return (
-    <Text onPress={onPress} style={styles.btnSecondaryWrapper}>
-      <Text style={styles.btnSecondaryText}>{label}</Text>
-    </Text>
-  );
-}
-function ButtonPrimary({ onPress, label }: { onPress: () => void; label: string }) {
-  return (
-    <Text onPress={onPress} style={styles.btnPrimaryWrapper}>
-      <Text style={styles.btnPrimaryText}>{label}</Text>
-    </Text>
-  );
-}
 
-/* styles */
-const styles = StyleSheet.create({
-  label: { fontSize: 13, color: "#374151", fontWeight: "600" },
-  employerName: { fontSize: 14, color: COLORS.text, fontWeight: "700" },
-
-  row: { flexDirection: "row", gap: 10 },
-  col: { flex: 1 },
-
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
-
-  totalRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  totalLabel: { color: COLORS.muted, fontWeight: "600" },
-  totalValue: { color: COLORS.text, fontWeight: "700", fontSize: 14 },
-  totalValueBold: { fontWeight: "800" },
-  totalValueBig: { fontSize: 18 },
-
-  btnSecondaryWrapper: {
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
-  },
-  btnSecondaryText: { color: COLORS.text, fontWeight: "600" },
-
-  btnPrimaryWrapper: {
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: COLORS.primary,
-  },
-  btnPrimaryText: { color: "#fff", fontWeight: "700" },
-});

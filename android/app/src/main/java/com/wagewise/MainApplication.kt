@@ -23,5 +23,8 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+    
+    // Initialize notification channel
+    NotificationHelper.createNotificationChannel(this)
   }
 }

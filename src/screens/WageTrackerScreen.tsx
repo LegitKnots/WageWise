@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -23,9 +23,9 @@ import EmployerEditorModal, {
 } from "components/wage/EmployerEditorModal";
 import ScheduleModal from "components/wage/ScheduleModal";
 import PaycheckModal from "components/wage/PaycheckModal";
-import { COLORS } from "components/wage/theme";
 
 import { useWageTracker } from "context/wageTracker";
+import { useTheme } from "context/ThemeContext";
 import type { Employer, PayDay } from "types/wageTracker";
 
 /* -------------------- utils -------------------- */
@@ -41,7 +41,7 @@ const lastOf = <T,>(arr: T[]): T | undefined => (arr.length ? arr[arr.length - 1
 /* =========================================================
    Screen
 ========================================================= */
-const WageTrackerScreen = () => {
+const WageTrackerScreen = ({ route }: { route?: any }) => {
   const {
     loading,
     employers,
@@ -53,6 +53,7 @@ const WageTrackerScreen = () => {
     deletePaydayByDate,
     nextPayDates,
   } = useWageTracker();
+  const { colors } = useTheme();
 
   /* ---------- modal / editing state ---------- */
   const [showEmployerModal, setShowEmployerModal] = useState(false);
@@ -70,6 +71,17 @@ const WageTrackerScreen = () => {
 
   const soonest = nextPayDates[0];
   const hasData = employers.length > 0;
+
+  /* ---------- handle route parameters ---------- */
+  useEffect(() => {
+    if (route?.params?.openAddEmployer) {
+      // Small delay to ensure the screen is fully loaded
+      const timer = setTimeout(() => {
+        openEmployerModal();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [route?.params?.openAddEmployer]);
 
   /* ---------- open handlers ---------- */
   const openEmployerModal = useCallback((e?: Employer) => {
@@ -175,12 +187,12 @@ const WageTrackerScreen = () => {
 
   /* -------------------- render -------------------- */
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Wage Tracker</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => openPayModal()}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Wage Tracker</Text>
+          <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={() => openPayModal()}>
             <PlusCircle size={18} color="#FFFFFF" />
             <Text style={styles.primaryBtnText}>Log Paycheck</Text>
           </TouchableOpacity>
@@ -188,12 +200,12 @@ const WageTrackerScreen = () => {
 
         {/* Empty guidance */}
         {!loading && !hasData && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Set up your first employer</Text>
-            <Text style={styles.emptyText}>
+          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Set up your first employer</Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>
               Add an employer, choose color & pay type, then start logging paychecks.
             </Text>
-            <TouchableOpacity style={[styles.primaryBtn, styles.mt8]} onPress={() => openEmployerModal()}>
+            <TouchableOpacity style={[styles.primaryBtn, styles.mt8, { backgroundColor: colors.primary }]} onPress={() => openEmployerModal()}>
               <PlusCircle size={18} color="#FFFFFF" />
               <Text style={styles.primaryBtnText}>Add Employer</Text>
             </TouchableOpacity>
@@ -202,11 +214,11 @@ const WageTrackerScreen = () => {
 
         {/* Soonest pay banner */}
         {hasData && soonest && (
-          <View style={styles.banner}>
-            <CalendarClock size={18} color={COLORS.text} />
-            <Text style={styles.bannerText}>
+          <View style={[styles.banner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <CalendarClock size={18} color={colors.text} />
+            <Text style={[styles.bannerText, { color: colors.text }]}>
               Next pay:{" "}
-              <Text style={styles.bannerStrong}>
+              <Text style={[styles.bannerStrong, { color: colors.text }]}>
                 {soonest.date.toLocaleDateString(undefined, {
                   weekday: "short",
                   month: "short",
@@ -223,19 +235,19 @@ const WageTrackerScreen = () => {
           const upcoming = nextPayDates.find((n) => n.employerId === e.id)?.date;
 
           return (
-            <View key={e.id} style={styles.empCard}>
+            <View key={e.id} style={[styles.empCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.empHeader}>
                 <View style={styles.empLeft}>
-                  <View style={[styles.colorDot, { backgroundColor: e.color || COLORS.primary }]} />
-                  <Text style={styles.empName}>{e.name}</Text>
+                  <View style={[styles.colorDot, { backgroundColor: e.color || colors.primary }]} />
+                  <Text style={[styles.empName, { color: colors.text }]}>{e.name}</Text>
                 </View>
 
                 <View style={styles.empActions}>
                   <TouchableOpacity onPress={() => openScheduleModal(e)} style={styles.iconBtn}>
-                    <CalendarCog size={18} color={COLORS.muted} />
+                    <CalendarCog size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => openEmployerModal(e)} style={styles.iconBtn}>
-                    <Pencil size={18} color={COLORS.muted} />
+                    <Pencil size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() =>
@@ -246,7 +258,7 @@ const WageTrackerScreen = () => {
                     }
                     style={styles.iconBtn}
                   >
-                    <Trash2 size={18} color="#EF4444" />
+                    <Trash2 size={18} color={colors.error} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -273,8 +285,8 @@ const WageTrackerScreen = () => {
                     .reverse()
                     .map((p) => (
                       <View key={p.date} style={styles.payRow}>
-                        <Wallet size={18} color={e.color || COLORS.primary} />
-                        <Text style={styles.payRowText}>
+                        <Wallet size={18} color={e.color || colors.primary} />
+                        <Text style={[styles.payRowText, { color: colors.text }]}>
                           {new Date(p.date).toLocaleDateString(undefined, {
                             month: "short",
                             day: "numeric",
@@ -291,7 +303,7 @@ const WageTrackerScreen = () => {
                             setShowPayModal(true);
                           }}
                         >
-                          <Pencil size={18} color={COLORS.muted} />
+                          <Pencil size={18} color={colors.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.iconBtn}
@@ -302,18 +314,18 @@ const WageTrackerScreen = () => {
                             ])
                           }
                         >
-                          <Trash2 size={18} color="#EF4444" />
+                          <Trash2 size={18} color={colors.error} />
                         </TouchableOpacity>
                       </View>
                     ))}
                 </View>
               ) : (
-                <Text style={styles.empEmptyText}>No pay entries yet.</Text>
+                <Text style={[styles.empEmptyText, { color: colors.textMuted }]}>No pay entries yet.</Text>
               )}
 
               {/* Employer-level action */}
-              <TouchableOpacity style={[styles.secondaryBtn, styles.mt10]} onPress={() => openPayModal(e.id)}>
-                <Text style={styles.secondaryBtnText}>Log Paycheck for {e.name}</Text>
+              <TouchableOpacity style={[styles.secondaryBtn, styles.mt10, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => openPayModal(e.id)}>
+                <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Log Paycheck for {e.name}</Text>
               </TouchableOpacity>
             </View>
           );
@@ -322,10 +334,10 @@ const WageTrackerScreen = () => {
         {/* Manage */}
         {hasData && (
           <TouchableOpacity
-            style={[styles.secondaryBtn, styles.manageBtn]}
+            style={[styles.secondaryBtn, styles.manageBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             onPress={() => openEmployerModal()}
           >
-            <Text style={styles.secondaryBtnText}>Add Another Employer</Text>
+            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Add Another Employer</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -361,7 +373,9 @@ const WageTrackerScreen = () => {
           setEditPayInitial(undefined);
           setShowPayModal(false);
         }}
-        employer={activeEmployer}
+        employers={employers}
+        selectedEmployerId={activeEmployerId}
+        onEmployerSelect={setActiveEmployerId}
         initial={editPayInitial}
         onSave={handleSavePay}
       />
@@ -375,26 +389,26 @@ export default WageTrackerScreen;
    Small subcomponents & styles
 ========================================================= */
 function Stat({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.statChip}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+    <View style={[styles.statChip, { backgroundColor: colors.surface }]}>
+      <Text style={[styles.statLabel, { color: colors.textMuted }]}>{label}</Text>
+      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
 
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: COLORS.text, flex: 1 },
+  headerTitle: { fontSize: 22, fontWeight: "700", flex: 1 },
 
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: COLORS.primary,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -402,33 +416,28 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: "#FFFFFF", fontWeight: "700" },
 
   emptyCard: {
-    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 16,
-    borderColor: COLORS.border,
     borderWidth: 1,
     marginBottom: 16,
   },
-  emptyTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text },
-  emptyText: { fontSize: 13, color: COLORS.muted, marginTop: 4 },
+  emptyTitle: { fontSize: 16, fontWeight: "700" },
+  emptyText: { fontSize: 13, marginTop: 4 },
 
   banner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: COLORS.primaryMuted,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 12,
-    borderColor: "#C7DBFF",
     borderWidth: 1,
   },
-  bannerText: { color: COLORS.text, fontSize: 14, fontWeight: "500" },
+  bannerText: { fontSize: 14, fontWeight: "500" },
   bannerStrong: { fontWeight: "800" },
 
   empCard: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 14,
     marginBottom: 14,
@@ -437,11 +446,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
+    borderWidth: 1,
   },
   empHeader: { flexDirection: "row", alignItems: "center" },
   empLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
   colorDot: { width: 10, height: 10, borderRadius: 5 },
-  empName: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+  empName: { fontSize: 16, fontWeight: "700" },
   empActions: { flexDirection: "row", gap: 8 },
   iconBtn: { padding: 6, borderRadius: 8 },
 
@@ -449,33 +459,29 @@ const styles = StyleSheet.create({
   statChip: {
     flexGrow: 1,
     flexBasis: "30%",
-    backgroundColor: COLORS.surface,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  statLabel: { fontSize: 11, color: COLORS.muted },
-  statValue: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginTop: 2 },
+  statLabel: { fontSize: 11 },
+  statValue: { fontSize: 14, fontWeight: "700", marginTop: 2 },
 
   payRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F9FAFB",
     borderRadius: 10,
     padding: 10,
   },
-  payRowText: { marginLeft: 8, color: COLORS.text, fontWeight: "600" },
-  empEmptyText: { color: COLORS.muted, marginTop: 6 },
+  payRowText: { marginLeft: 8, fontWeight: "600" },
+  empEmptyText: { marginTop: 6 },
 
   secondaryBtn: {
-    borderColor: "#D1D5DB",
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: "#FFFFFF",
   },
-  secondaryBtnText: { color: COLORS.text, fontWeight: "600" },
+  secondaryBtnText: { fontWeight: "600" },
 
   /* --- extracted from former inline styles --- */
   mt8: { marginTop: 8 },

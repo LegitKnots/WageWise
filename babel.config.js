@@ -10,6 +10,7 @@ module.exports = {
           assets: './src/assets/',
           components: './src/components/',
           config: './src/config/',
+          constants: './src/constants/',
           context: './src/context/',
           hooks: './src/hooks/',
           interfaces: './src/interfaces/',

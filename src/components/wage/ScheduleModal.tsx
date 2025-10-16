@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from "r
 import DateTimePicker from "@react-native-community/datetimepicker";
 import PageSheet from "./PageSheet";
 import { Segmented } from "./forms";
-import { COLORS } from "./theme";
+import { useTheme } from "context/ThemeContext";
 import type { Schedule } from "types/wageTracker";
 
 /* order matters */
@@ -23,6 +23,7 @@ export default function ScheduleModal({
   initial: Schedule;
   onSave: (s: Schedule) => void;
 }) {
+  const { colors } = useTheme();
   const [freq, setFreq] = React.useState<Schedule["payFrequency"]>(initial.payFrequency);
   const [dow, setDow] = React.useState<NonNullable<Schedule["dayOfWeek"]>>(initial.dayOfWeek ?? "friday");
   const [dom, setDom] = React.useState(String(initial.dayOfMonth ?? 1));
@@ -49,6 +50,8 @@ export default function ScheduleModal({
     [time]
   );
 
+  const styles = createStyles(colors);
+
   return (
     <PageSheet visible={visible} onClose={onClose} title="Edit Schedule">
       <Text style={styles.label}>Pay Frequency</Text>
@@ -64,7 +67,7 @@ export default function ScheduleModal({
 
       {freq === "monthly" ? (
         <>
-          <Text style={[styles.label, styles.mt8]}>Day of Month (1–31)</Text>
+          <Text style={[styles.label, styles.mt16]}>Day of Month (1–31)</Text>
           <TextInput
             style={styles.input}
             value={dom}
@@ -74,7 +77,7 @@ export default function ScheduleModal({
         </>
       ) : (
         <>
-          <Text style={[styles.label, styles.mt8]}>Day of Week</Text>
+          <Text style={[styles.label, styles.mt16]}>Day of Week</Text>
           {/* single-row weekday strip */}
           <View style={styles.stripRow}>
             {DOW_KEYS.map((key, i) => {
@@ -100,7 +103,7 @@ export default function ScheduleModal({
 
       {freq === "biweekly" && (
         <>
-          <Text style={[styles.label, styles.mt8]}>Biweekly Anchor (first known payday)</Text>
+          <Text style={[styles.label, styles.mt16]}>Biweekly Anchor (first known payday)</Text>
 
           {/* Collapsible anchor selector */}
           <TouchableOpacity
@@ -111,11 +114,11 @@ export default function ScheduleModal({
             <Text style={styles.disclosureText}>
               {anchor ? anchor.toLocaleDateString() : "Set anchor date"}
             </Text>
-            <Text style={[styles.chevron, anchorOpen && styles.chevronOpen]}>›</Text>
+            <Text style={[styles.chevron, anchorOpen && styles.chevronOpen, { color: colors.textMuted }]}>›</Text>
           </TouchableOpacity>
 
           {anchorOpen && (
-            <View style={styles.mt6}>
+            <View style={styles.mt12}>
               <DateTimePicker
                 value={anchor || new Date()}
                 mode="date"
@@ -128,18 +131,18 @@ export default function ScheduleModal({
       )}
 
       {/* Collapsible system time picker */}
-      <Text style={[styles.label, styles.mt8]}>Reminder Time</Text>
+      <Text style={[styles.label, styles.mt16]}>Reminder Time</Text>
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => setTimeOpen((v) => !v)}
         style={styles.disclosure}
       >
         <Text style={styles.disclosureText}>{formattedTime}</Text>
-        <Text style={[styles.chevron, timeOpen && styles.chevronOpen]}>›</Text>
+        <Text style={[styles.chevron, timeOpen && styles.chevronOpen, { color: colors.textMuted }]}>›</Text>
       </TouchableOpacity>
 
       {timeOpen && (
-        <View style={styles.mt6}>
+        <View style={styles.mt12}>
           <DateTimePicker
             value={time}
             mode="time"
@@ -156,7 +159,7 @@ export default function ScheduleModal({
         </View>
       )}
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, styles.mt16]}>
         <ButtonSecondary onPress={onClose} label="Cancel" />
         <ButtonPrimary
           label="Save"
@@ -179,85 +182,95 @@ export default function ScheduleModal({
 
 /* local buttons */
 function ButtonSecondary({ onPress, label }: { onPress: () => void; label: string }) {
+  const { colors } = useTheme();
+  const buttonStyles = createStyles(colors);
+  
   return (
-    <Text onPress={onPress} style={styles.btnSecondaryTextWrapper}>
-      <Text style={styles.btnSecondaryText}>{label}</Text>
+    <Text onPress={onPress} style={buttonStyles.btnSecondaryTextWrapper}>
+      <Text style={buttonStyles.btnSecondaryText}>{label}</Text>
     </Text>
   );
 }
 function ButtonPrimary({ onPress, label }: { onPress: () => void; label: string }) {
+  const { colors } = useTheme();
+  const buttonStyles = createStyles(colors);
+  
   return (
-    <Text onPress={onPress} style={styles.btnPrimaryTextWrapper}>
-      <Text style={styles.btnPrimaryText}>{label}</Text>
+    <Text onPress={onPress} style={buttonStyles.btnPrimaryTextWrapper}>
+      <Text style={buttonStyles.btnPrimaryText}>{label}</Text>
     </Text>
   );
 }
 
-/* styles */
-const styles = StyleSheet.create({
-  label: { fontSize: 13, color: "#374151", fontWeight: "600" },
-  mt8: { marginTop: 8 },
-  mt6: { marginTop: 6 },
+// Styles function to create styles with theme colors
+function createStyles(colors: any) {
+  return StyleSheet.create({
+    label: { fontSize: 13, color: colors.textMuted, fontWeight: "600", marginBottom: 12 },
+    mt16: { marginTop: 16 },
+    mt12: { marginTop: 12 },
 
-  input: {
-    backgroundColor: "#fff",
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    color: COLORS.text,
-  },
+    input: {
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      color: colors.text,
+    },
 
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
+    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
 
-  /* weekday strip */
-  stripRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "nowrap",
-    paddingVertical: 4,
-  },
-  stripCell: { flex: 1, alignItems: "center" },
-  stripText: { color: COLORS.text, fontWeight: "700", fontSize: 13, opacity: 0.7 },
-  stripTextActive: { opacity: 1 },
-  underline: { marginTop: 6, height: 2, width: 0, backgroundColor: "transparent", borderRadius: 2 },
-  underlineActive: { width: 20, backgroundColor: COLORS.text },
+    /* weekday strip */
+    stripRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexWrap: "nowrap",
+      paddingVertical: 4,
+    },
+    stripCell: { flex: 1, alignItems: "center" },
+    stripText: { color: colors.text, fontWeight: "700", fontSize: 13, opacity: 0.7 },
+    stripTextActive: { opacity: 1 },
+    underline: { marginTop: 6, height: 2, width: 0, backgroundColor: "transparent", borderRadius: 2 },
+    underlineActive: { width: 20, backgroundColor: colors.text },
 
-  /* collapsible fields */
-  disclosure: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fff",
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginTop: 6,
-  },
-  disclosureText: { color: COLORS.text, fontWeight: "600" },
-  chevron: { transform: [{ rotate: "90deg" }], color: "#6B7280", fontSize: 18 },
-  chevronOpen: { transform: [{ rotate: "270deg" }] },
+    /* collapsible fields */
+    disclosure: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      marginTop: 8,
+    },
+    disclosureText: { color: colors.text, fontWeight: "600" },
+    chevron: { fontSize: 18 },
+    chevronOpen: { transform: [{ rotate: "90deg" }] },
 
-  /* buttons: wrap text with background/border via wrapper, text styles separate */
-  btnSecondaryTextWrapper: {
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
-  },
-  btnSecondaryText: { color: COLORS.text, fontWeight: "600" },
+    /* buttons: wrap text with background/border via wrapper, text styles separate */
+    btnSecondaryTextWrapper: {
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      backgroundColor: colors.card,
+    },
+    btnSecondaryText: { color: colors.text, fontWeight: "600" },
 
-  btnPrimaryTextWrapper: {
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: COLORS.primary,
-  },
-  btnPrimaryText: { color: "#fff", fontWeight: "700" },
-});
+    btnPrimaryTextWrapper: {
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      backgroundColor: colors.primary,
+    },
+    btnPrimaryText: { color: "#fff", fontWeight: "700" },
+  });
+}
+
+

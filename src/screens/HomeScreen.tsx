@@ -1,23 +1,11 @@
 import React, { useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Wallet, Clock, Calculator, PlusCircle, ChevronRight } from "lucide-react-native";
+import { Wallet, Clock, Calculator, PlusCircle, ChevronRight, ClockPlus } from "lucide-react-native";
 import { getGreeting } from "scripts/time";
 import { useUser } from "context/user";
 import { useWageTracker } from "context/wageTracker";
-
-// If you have a centralized COLORS theme, swap these to your tokens.
-const COLORS = {
-  bg: "#F7F8FA",
-  text: "#0B1220",
-  muted: "#6B7280",
-  border: "#E5E7EB",
-  card: "#FFFFFF",
-  primary: "#007AFF",
-  primaryMuted: "#E8F1FF",
-  surface: "#F3F4F6",
-  success: "#10B981",
-};
+import { useTheme } from "context/ThemeContext";
 
 const fmtCurrency = (n: number) =>
   Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n);
@@ -25,6 +13,7 @@ const fmtCurrency = (n: number) =>
 const HomeScreen = ({ navigation }: any) => {
   const { user } = useUser();
   const { loading, employers, stats, nextSoonest } = useWageTracker();
+  const { colors } = useTheme();
 
   // Flatten last 8 paychecks across all employers for the spark bars
   const bars = useMemo(() => {
@@ -49,53 +38,61 @@ const HomeScreen = ({ navigation }: any) => {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Hero header */}
         <View style={styles.hero}>
-          <View style={styles.flex1}>
-            <Text style={styles.greeting}>
-              Good {getGreeting()}, {user.firstName || "there"}
-            </Text>
-            <Text style={styles.subtle}>{today}</Text>
-          </View>
-
-          {/* Next pay pill */}
-          <View style={[styles.pill, !nextSoonest && { backgroundColor: COLORS.surface }]}>
-            <Clock size={14} color={nextSoonest ? COLORS.primary : COLORS.muted} />
-            <Text style={[styles.pillText, !nextSoonest && { color: COLORS.muted }]}>
-              {nextSoonest
-                ? `Next pay · ${nextSoonest.date.toLocaleDateString(undefined, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}`
-                : "No pay scheduled"}
-            </Text>
-          </View>
+          <Text style={[styles.greeting, { color: colors.text }]}>
+            Good {getGreeting()}, {user.firstName || "there"}
+          </Text>
+          <Text style={[styles.subtle, { color: colors.textMuted }]}>{today}</Text>
         </View>
 
         {/* Overview / Empty state */}
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {!loading && hasAnyData ? (
             <>
               <View style={styles.cardHeaderRow}>
-                <Text style={styles.cardTitle}>Pay Overview</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Pay Overview</Text>
+                {nextSoonest && (
+                  <View style={[
+                    styles.pill, 
+                    { 
+                      backgroundColor: colors.primaryMuted
+                    }
+                  ]}>
+                    <ClockPlus size={14} color={colors.primary} />
+                    <Text style={[
+                      styles.pillText, 
+                      { 
+                        color: colors.primary
+                      }
+                    ]}>
+                      {nextSoonest.date.toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Spark bars */}
-              <View style={styles.sparkRow}>
-                {bars.length > 0 ? (
-                  bars.map((b, i) => (
+              {bars.length > 0 ? (
+                <View style={styles.sparkRow}>
+                  {bars.map((b, i) => (
                     <View key={i} style={styles.sparkCol}>
-                      <View style={[styles.sparkBar, { height: 96 * b.heightPct }]} />
-                      <Text style={styles.sparkLabel}>{b.label}</Text>
+                      <View style={[styles.sparkBar, { height: 96 * b.heightPct, backgroundColor: colors.primary }]} />
+                      <Text style={[styles.sparkLabel, { color: colors.textMuted }]}>{b.label}</Text>
                     </View>
-                  ))
-                ) : (
-                  <Text style={styles.sparkEmpty}>Add paychecks to see trends</Text>
-                )}
-              </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.sparkEmptyContainer}>
+                  <Text style={[styles.sparkEmpty, { color: colors.textMuted }]}>Add paychecks to see trends</Text>
+                </View>
+              )}
 
               {/* Quick stats */}
               <View style={styles.statsWrap}>
@@ -107,27 +104,25 @@ const HomeScreen = ({ navigation }: any) => {
             </>
           ) : (
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No pay data yet</Text>
-              <Text style={styles.emptyText}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No pay data yet</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
                 Set up an employer & schedule, or add your first paycheck to see insights here.
               </Text>
 
-              <View style={styles.emptyActions}>
-                <Pressable
-                  style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}
-                  onPress={() => navigation.navigate("Employers")}
-                >
-                  <PlusCircle size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryBtnText}>Add Employer</Text>
-                </Pressable>
-
-                <Pressable
-                  style={({ pressed }) => [styles.secondaryBtn, pressed && styles.secondaryPressed]}
-                  onPress={() => navigation.navigate("PayTracker")}
-                >
-                  <Text style={styles.secondaryBtnText}>Log Paycheck</Text>
-                </Pressable>
-              </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.primaryBtn, 
+                  { backgroundColor: colors.primary },
+                  pressed && styles.btnPressed
+                ]}
+                onPress={() => navigation.getParent()?.navigate("WageTrackerTabNavigator", {
+                  screen: "mainScreen",
+                  params: { openAddEmployer: true }
+                })}
+              >
+                <PlusCircle size={18} color="#FFFFFF" />
+                <Text style={styles.primaryBtnText}>Add Employer</Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -144,23 +139,16 @@ const HomeScreen = ({ navigation }: any) => {
             title="Hour Tracking"
             desc="Validate hours vs pay"
             Icon={Clock}
-            onPress={() => navigation.navigate("Hours")}
+            onPress={() => navigation.navigate("HourTracking")}
           />
           <Shortcut
             title="Budget Planner"
             desc="Plan & allocate"
             Icon={Calculator}
-            onPress={() => navigation.navigate("Budget")}
+            onPress={() => navigation.navigate("BudgetPlanner")}
           />
         </View>
 
-        {/* Upcoming features */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Upcoming Features</Text>
-          <Text style={styles.infoText}>
-            Soon you’ll set payday reminders, track goals, and view richer insights here.
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -171,10 +159,11 @@ export default HomeScreen;
 /* ---------- small components ---------- */
 
 function StatTile({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.statTile}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+    <View style={[styles.statTile, { backgroundColor: colors.surface }]}>
+      <Text style={[styles.statLabel, { color: colors.textMuted }]}>{label}</Text>
+      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
     </View>
   );
 }
@@ -190,23 +179,31 @@ function Shortcut({
   Icon: any;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
   return (
-    <Pressable style={({ pressed }) => [styles.shortcut, pressed && styles.shortcutPressed]} onPress={onPress}>
-      <View style={styles.badge}>
-        <Icon size={18} color={COLORS.primary} />
+    <Pressable style={({ pressed }) => [
+      styles.shortcut, 
+      { 
+        backgroundColor: colors.card,
+        borderColor: colors.border 
+      },
+      pressed && styles.shortcutPressed
+    ]} onPress={onPress}>
+      <View style={[styles.badge, { backgroundColor: colors.surface }]}>
+        <Icon size={18} color={colors.primary} />
       </View>
       <View style={styles.flex1}>
-        <Text style={styles.shortcutTitle}>{title}</Text>
-        <Text style={styles.shortcutDesc}>{desc}</Text>
+        <Text style={[styles.shortcutTitle, { color: colors.text }]}>{title}</Text>
+        <Text style={[styles.shortcutDesc, { color: colors.textMuted }]}>{desc}</Text>
       </View>
-      <ChevronRight size={18} color={COLORS.muted} />
+      <ChevronRight size={18} color={colors.textMuted} />
     </Pressable>
   );
 }
 
 /* ==================== styles ==================== */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
 
   /* utility */
@@ -214,27 +211,25 @@ const styles = StyleSheet.create({
 
   /* Hero */
   hero: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
     marginBottom: 12,
   },
-  greeting: { fontSize: 26, fontWeight: "800", color: COLORS.text },
-  subtle: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
+  greeting: { 
+    fontSize: 26, 
+    fontWeight: "800",
+  },
+  subtle: { fontSize: 14, marginTop: 2 },
   pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: COLORS.primaryMuted,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
-  pillText: { fontSize: 12.5, color: COLORS.primary, fontWeight: "600" },
+  pillText: { fontSize: 12.5, fontWeight: "600" },
 
   /* Cards */
   card: {
-    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 16,
     marginBottom: 18,
@@ -243,15 +238,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
+    borderWidth: 1,
   },
   cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  cardTitle: { fontSize: 18, fontWeight: "700", color: COLORS.text },
+  cardTitle: { fontSize: 18, fontWeight: "700" },
 
   /* Spark bars */
   sparkRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    minHeight: 110,
     paddingVertical: 8,
     gap: 10,
     marginTop: 4,
@@ -259,12 +254,20 @@ const styles = StyleSheet.create({
   sparkCol: { flex: 1, alignItems: "center", justifyContent: "flex-end" },
   sparkBar: {
     width: "68%",
-    backgroundColor: COLORS.primary,
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
   },
-  sparkLabel: { fontSize: 10, color: "#95A3B8", marginTop: 6 },
-  sparkEmpty: { fontSize: 12, color: COLORS.muted },
+  sparkLabel: { fontSize: 10, marginTop: 6 },
+  sparkEmptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
+  },
+  sparkEmpty: { 
+    fontSize: 16, 
+    fontWeight: "600",
+    textAlign: "center",
+  },
 
   /* Stats */
   statsWrap: {
@@ -274,27 +277,24 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statTile: {
-    backgroundColor: COLORS.surface,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
     flexBasis: "48%",
     flexGrow: 1,
   },
-  statLabel: { fontSize: 12, color: COLORS.muted },
-  statValue: { fontSize: 16, fontWeight: "800", color: COLORS.text, marginTop: 2 },
+  statLabel: { fontSize: 12 },
+  statValue: { fontSize: 16, fontWeight: "800", marginTop: 2 },
 
   /* Empty state */
   emptyWrap: { alignItems: "flex-start", gap: 10 },
-  emptyTitle: { fontSize: 17, fontWeight: "800", color: COLORS.text },
-  emptyText: { fontSize: 13, color: COLORS.muted, lineHeight: 18 },
-  emptyActions: { flexDirection: "row", gap: 10, marginTop: 6 },
+  emptyTitle: { fontSize: 17, fontWeight: "800" },
+  emptyText: { fontSize: 13, lineHeight: 18 },
 
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: COLORS.primary,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -303,15 +303,13 @@ const styles = StyleSheet.create({
   btnPressed: { opacity: 0.85 },
 
   secondaryBtn: {
-    borderColor: COLORS.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: "#FFFFFF",
   },
-  secondaryBtnText: { color: COLORS.text, fontWeight: "700" },
-  secondaryPressed: { backgroundColor: "#FAFAFA" },
+  secondaryBtnText: { fontWeight: "700" },
+  secondaryPressed: { opacity: 0.9 },
 
   /* Shortcuts */
   grid3: { marginTop: 2, gap: 12 },
@@ -319,7 +317,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: COLORS.card,
     borderRadius: 14,
     padding: 14,
     shadowColor: "#000",
@@ -327,26 +324,17 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
+    borderWidth: 1,
   },
   shortcutPressed: { opacity: 0.9 },
   badge: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: COLORS.primaryMuted,
     alignItems: "center",
     justifyContent: "center",
   },
-  shortcutTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-  shortcutDesc: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  shortcutTitle: { fontSize: 15, fontWeight: "700" },
+  shortcutDesc: { fontSize: 12, marginTop: 2 },
 
-  /* Info card */
-  infoCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 8,
-  },
-  infoTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text, marginBottom: 4 },
-  infoText: { fontSize: 13, color: COLORS.muted },
 });

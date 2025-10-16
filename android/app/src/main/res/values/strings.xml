@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">wagewise</string>
+    <string name="app_name">WageWise</string>
+    <string name="notification_channel_name">Payday Reminders</string>
+    <string name="notification_channel_description">Get notified about upcoming paydays and when it's time to log your earnings.</string>
 </resources>

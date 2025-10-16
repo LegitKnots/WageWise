@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from "react-native";
 import PageSheet from "./PageSheet";
 import { FormText, FormNumber, Segmented, PillRow, ColorSwatches } from "./forms";
-import { COLORS } from "./theme";
+import { useTheme } from "context/ThemeContext";
 import type { PayStructure } from "types/wageTracker";
 
 const PRESET_COLORS = [
@@ -33,6 +33,7 @@ export default function EmployerEditorModal({
   initial?: EmployerEditorPayload;
   onSave: (payload: EmployerEditorPayload) => void;
 }) {
+  const { colors } = useTheme();
   /** -------- memoized initial primitives so deps stay simple & stable -------- */
   const initialName = useMemo(() => initial?.name ?? "", [initial?.name]);
   const initialColor = useMemo(() => initial?.color ?? PRESET_COLORS[0], [initial?.color]);
@@ -115,6 +116,78 @@ export default function EmployerEditorModal({
     setCustomLabel("");
   };
 
+  const styles = StyleSheet.create({
+    scroll: { flex: 1 },
+    scrollContent: { paddingBottom: 120 },
+
+    label: { fontSize: 13, color: colors.textMuted, fontWeight: "600", marginBottom: 12 },
+    mt16: { marginTop: 16 },
+    mt12: { marginTop: 12 },
+
+    addSwatch: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      borderWidth: 2,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    addSwatchPlus: { color: colors.textMuted, fontWeight: "700" },
+
+    customRow: { flexDirection: "row", gap: 8, alignItems: "center", marginTop: 8 },
+    customInput: {
+      flex: 1,
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      color: colors.text,
+      minHeight: 44,
+    },
+    addBtn: {
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+    },
+    addBtnText: { color: "#fff", fontWeight: "700" },
+
+    footer: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      padding: 20,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.background,
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 10,
+      paddingTop: 16,
+    },
+    cancelBtn: {
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      backgroundColor: colors.card,
+    },
+    cancelText: { color: colors.text, fontWeight: "600" },
+    saveBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+    },
+    saveText: { color: "#fff", fontWeight: "700" },
+  });
+
   return (
     <PageSheet
       visible={visible}
@@ -154,7 +227,7 @@ export default function EmployerEditorModal({
           />
         )}
 
-        <Text style={[styles.label, styles.mt4]}>Base Pay</Text>
+        <Text style={[styles.label, styles.mt16]}>Base Pay</Text>
         <Segmented
           value={base}
           onChange={(v) => setBase(v as PayStructure["base"])}
@@ -165,25 +238,27 @@ export default function EmployerEditorModal({
         />
 
         {base === "hourly" && (
-          <FormNumber
-            label="Default Hourly Rate"
-            value={defaultRate}
-            onChange={setDefaultRate}
-            placeholder="0.00"
-          />
+          <View style={styles.mt12}>
+            <FormNumber
+              label="Default Hourly Rate"
+              value={defaultRate}
+              onChange={setDefaultRate}
+              placeholder="0.00"
+            />
+          </View>
         )}
 
-        <Text style={[styles.label, styles.mt10]}>Extras</Text>
+        <Text style={[styles.label, styles.mt16]}>Extras</Text>
         {/* If PillRow has a narrow union type for keys, `as any` widens to accept custom keys. */}
         <PillRow valueSet={valueSet} options={options as any} onToggle={(k: string) => toggleExtra(k)} />
 
-        <Text style={[styles.label, styles.mt10]}>Custom extra</Text>
+        <Text style={[styles.label, styles.mt16]}>Custom extra</Text>
         <View style={styles.customRow}>
           <TextInput
             value={customLabel}
             onChangeText={setCustomLabel}
             placeholder='e.g. "SPIFF"'
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.textMuted}
             style={styles.customInput}
             autoCapitalize="none"
             autoCorrect={false}
@@ -220,74 +295,3 @@ export default function EmployerEditorModal({
   );
 }
 
-/* ---------------- styles ---------------- */
-const styles = StyleSheet.create({
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 120 },
-
-  label: { fontSize: 13, color: "#374151", fontWeight: "600" },
-  mt4: { marginTop: 4 },
-  mt10: { marginTop: 10 },
-
-  addSwatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: "#D1D5DB",
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addSwatchPlus: { color: COLORS.muted, fontWeight: "700" },
-
-  customRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  customInput: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    color: COLORS.text,
-    minHeight: 44,
-  },
-  addBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  addBtnText: { color: "#fff", fontWeight: "700" },
-
-  footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  cancelBtn: {
-    borderColor: "#D1D5DB",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: "#fff",
-  },
-  cancelText: { color: COLORS.text, fontWeight: "600" },
-  saveBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  saveText: { color: "#fff", fontWeight: "700" },
-});

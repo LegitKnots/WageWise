@@ -1,5 +1,6 @@
 export type MainNavigatorParamList = {
-    TabNavigator: any
+    Onboarding: undefined
+    TabNavigator: undefined
 }
 
 export type TabNavigatorParamList = {
@@ -10,10 +11,12 @@ export type TabNavigatorParamList = {
 
 export type HomeTabNavigatorParamList = {
     mainScreen: any
+    HourTracking: undefined
+    BudgetPlanner: undefined
 }
 
 export type WageTrackerTabNavigatorParamList = {
-    mainScreen: any
+    mainScreen: { openAddEmployer?: boolean } | undefined
 }
 
 export type SettingsTabNavigatorParamList = {
