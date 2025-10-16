@@ -50,6 +50,12 @@ export type PayStructure = {
   base: 'hourly' | 'salary';
 
   /**
+   * Default hourly rate for this employer (only used when base is 'hourly').
+   * This will pre-fill the rate field when adding new paychecks.
+   */
+  defaultRate?: number;
+
+  /**
    * Extra components available for this employer.
    * Example: [{ kind:'commission', label:'Commission' }, { kind:'custom', label:'SPIFF' }]
    */

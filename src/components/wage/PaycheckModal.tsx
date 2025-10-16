@@ -20,7 +20,7 @@ export default function PaycheckModal({
 }) {
   const [date, setDate] = React.useState<Date>(initial ? new Date(initial.date) : new Date());
   const [hours, setHours] = React.useState(String(getHourly(initial)?.hours ?? 0));
-  const [rate, setRate] = React.useState(String(getHourly(initial)?.rate ?? 0));
+  const [rate, setRate] = React.useState(String(getHourly(initial)?.rate ?? employer?.payStructure?.defaultRate ?? 0));
   const [baseAmt, setBaseAmt] = React.useState(String(getSalary(initial)?.amount ?? 0));
   const [taxes, setTaxes] = React.useState(String(initial?.taxes ?? 0));
   const [extras, setExtras] = React.useState<Record<string, string>>(
@@ -28,6 +28,34 @@ export default function PaycheckModal({
       ? toExtraMap(initial)
       : Object.fromEntries((employer?.payStructure.extras || []).map((x) => [x.label, "0"]))
   );
+
+  // Reset form when modal opens or employer changes
+  React.useEffect(() => {
+    if (!visible) return;
+    
+    const defaultRate = employer?.payStructure?.defaultRate;
+    const initialRate = getHourly(initial)?.rate;
+    const finalRate = initialRate ?? defaultRate ?? 0;
+    
+    console.log('PaycheckModal reset:', {
+      employerName: employer?.name,
+      defaultRate,
+      initialRate,
+      finalRate,
+      isInitial: !!initial
+    });
+    
+    setDate(initial ? new Date(initial.date) : new Date());
+    setHours(String(getHourly(initial)?.hours ?? 0));
+    setRate(String(finalRate));
+    setBaseAmt(String(getSalary(initial)?.amount ?? 0));
+    setTaxes(String(initial?.taxes ?? 0));
+    setExtras(
+      initial
+        ? toExtraMap(initial)
+        : Object.fromEntries((employer?.payStructure.extras || []).map((x) => [x.label, "0"]))
+    );
+  }, [visible, initial, employer?.payStructure?.defaultRate, employer?.payStructure?.extras]);
 
   if (!employer) return null;
 

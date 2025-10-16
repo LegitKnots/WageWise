@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from "react-native";
 import PageSheet from "./PageSheet";
-import { FormText, Segmented, PillRow, ColorSwatches } from "./forms";
+import { FormText, FormNumber, Segmented, PillRow, ColorSwatches } from "./forms";
 import { COLORS } from "./theme";
 import type { PayStructure } from "types/wageTracker";
 
@@ -46,12 +46,17 @@ export default function EmployerEditorModal({
     () => (initialExtrasRaw ? initialExtrasRaw : []),
     [initialExtrasRaw]
   );
+  const initialDefaultRate = useMemo(
+    () => initial?.payStructure?.defaultRate ?? 0,
+    [initial?.payStructure?.defaultRate]
+  );
 
   /** -------- local state -------- */
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor);
   const [base, setBase] = useState<PayStructure["base"]>(initialBase);
   const [extras, setExtras] = useState<PayStructure["extras"]>(initialExtras);
+  const [defaultRate, setDefaultRate] = useState(String(initialDefaultRate));
 
   const [customOpen, setCustomOpen] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
@@ -63,9 +68,10 @@ export default function EmployerEditorModal({
     setColor(initialColor);
     setBase(initialBase);
     setExtras(initialExtras);
+    setDefaultRate(String(initialDefaultRate));
     setCustomOpen(false);
     setCustomLabel("");
-  }, [visible, initialName, initialColor, initialBase, initialExtras]);
+  }, [visible, initialName, initialColor, initialBase, initialExtras, initialDefaultRate]);
 
   /** -------- options & selection -------- */
   const valueSet = useMemo(
@@ -158,6 +164,15 @@ export default function EmployerEditorModal({
           ]}
         />
 
+        {base === "hourly" && (
+          <FormNumber
+            label="Default Hourly Rate"
+            value={defaultRate}
+            onChange={setDefaultRate}
+            placeholder="0.00"
+          />
+        )}
+
         <Text style={[styles.label, styles.mt10]}>Extras</Text>
         {/* If PillRow has a narrow union type for keys, `as any` widens to accept custom keys. */}
         <PillRow valueSet={valueSet} options={options as any} onToggle={(k: string) => toggleExtra(k)} />
@@ -189,7 +204,11 @@ export default function EmployerEditorModal({
             onSave({
               name: name.trim() || "Employer",
               color,
-              payStructure: { base, extras },
+              payStructure: { 
+                base, 
+                extras,
+                ...(base === "hourly" && { defaultRate: Number(defaultRate) || 0 })
+              },
             })
           }
           style={styles.saveBtn}

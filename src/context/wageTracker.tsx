@@ -155,7 +155,7 @@ function deriveTotalsFromBreakdown(p: PayDay): PayDay {
 
 /** Provide a default pay structure when missing (migration) */
 function getDefaultPayStructure(): PayStructure {
-  return { base: "hourly", extras: [] };
+  return { base: "hourly", defaultRate: undefined, extras: [] };
 }
 
 /** Context shape */
@@ -228,6 +228,7 @@ export const WageTrackerProvider: React.FC<{ children: React.ReactNode }> = ({
             e?.payStructure && e?.payStructure?.base
               ? {
                   base: e.payStructure.base === "salary" ? "salary" : "hourly",
+                  defaultRate: typeof e.payStructure?.defaultRate === "number" ? e.payStructure.defaultRate : undefined,
                   extras: Array.isArray(e?.payStructure?.extras)
                     ? e.payStructure.extras.map((x: any) => ({
                         kind: x?.kind ?? "custom",
