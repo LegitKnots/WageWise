@@ -12,11 +12,14 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Calculator, Plus, Edit3, Trash2, Target, TrendingUp, DollarSign, PieChart } from 'lucide-react-native';
+import { Plus, Edit3, Trash2, DollarSign, PieChart } from 'lucide-react-native';
 import { useWageTracker } from 'context/wageTracker';
 import { useTheme } from 'context/ThemeContext';
+import ErrorBoundary from 'components/ErrorBoundary';
+import { 
+  safeArray, 
+  safeAsyncStorageGet} from 'utils/safeAccess';
 import { COLORS, COLOR_OPTIONS } from 'constants/colors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface BudgetCategory {
   id: string;
@@ -48,10 +51,12 @@ const colorOptions = COLOR_OPTIONS;
 
 const BudgetPlannerScreen = () => {
   const { colors } = useTheme();
-  const { stats } = useWageTracker();
+  useWageTracker();
+
+  // Safe access to stats
   const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>([]);
   const [budgetGoals, setBudgetGoals] = useState<BudgetGoal[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [, setExpenses] = useState<Expense[]>([]);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -60,7 +65,7 @@ const BudgetPlannerScreen = () => {
   // Form states
   const [categoryName, setCategoryName] = useState('');
   const [categoryAmount, setCategoryAmount] = useState('');
-  const [categoryColor, setCategoryColor] = useState(COLORS.primary);
+  const [categoryColor, setCategoryColor] = useState<string>(COLORS.primary);
   const [goalName, setGoalName] = useState('');
   const [goalAmount, setGoalAmount] = useState('');
   const [goalCurrent, setGoalCurrent] = useState('');
@@ -76,29 +81,19 @@ const BudgetPlannerScreen = () => {
 
   const loadData = async () => {
     try {
-      const data = await AsyncStorage.getItem(BUDGET_STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        setBudgetCategories(parsed.categories || []);
-        setBudgetGoals(parsed.goals || []);
-        setExpenses(parsed.expenses || []);
-      }
+      const data = await safeAsyncStorageGet(BUDGET_STORAGE_KEY, { categories: [], goals: [], expenses: [] });
+      setBudgetCategories(safeArray(data.categories, []));
+      setBudgetGoals(safeArray(data.goals, []));
+      setExpenses(safeArray(data.expenses, []));
     } catch (error) {
       console.error('Error loading budget data:', error);
+      // Set empty arrays as fallback
+      setBudgetCategories([]);
+      setBudgetGoals([]);
+      setExpenses([]);
     }
   };
 
-  const saveData = async () => {
-    try {
-      await AsyncStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify({
-        categories: budgetCategories,
-        goals: budgetGoals,
-        expenses,
-      }));
-    } catch (error) {
-      console.error('Error saving budget data:', error);
-    }
-  };
 
   const totalBudget = useMemo(() => 
     budgetCategories.reduce((sum, cat) => sum + cat.amount, 0), 
@@ -134,7 +129,7 @@ const BudgetPlannerScreen = () => {
     setShowAddCategory(false);
   };
 
-  const editCategory = (category: BudgetCategory) => {
+  const editCategory = () => {
     // TODO: Implement edit functionality
     Alert.alert('Edit Category', 'Edit functionality will be implemented in the next update.');
   };
@@ -176,7 +171,7 @@ const BudgetPlannerScreen = () => {
     setShowAddGoal(false);
   };
 
-  const editGoal = (goal: BudgetGoal) => {
+  const editGoal = () => {
     // TODO: Implement edit functionality
     Alert.alert('Edit Goal', 'Edit functionality will be implemented in the next update.');
   };
@@ -223,15 +218,7 @@ const BudgetPlannerScreen = () => {
     setShowAddExpense(false);
   };
 
-  const getCategoryName = (categoryId: string): string => {
-    const category = budgetCategories.find(cat => cat.id === categoryId);
-    return category?.name || 'Unknown Category';
-  };
 
-  const getCategoryColor = (categoryId: string): string => {
-    const category = budgetCategories.find(cat => cat.id === categoryId);
-    return category?.color || COLORS.primary;
-  };
 
   const formatCurrency = (amount: number) => 
     Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -248,12 +235,13 @@ const BudgetPlannerScreen = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
-        contentContainerStyle={styles.content} 
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+    <ErrorBoundary>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors?.background || '#FFFFFF' }]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>Budget Planner</Text>
@@ -329,7 +317,7 @@ const BudgetPlannerScreen = () => {
                   <View style={styles.categoryActions}>
                     <TouchableOpacity
                       style={[styles.actionButton, { backgroundColor: colors.surface }]}
-                      onPress={() => editCategory(category)}
+                      onPress={() => editCategory()}
                     >
                       <Edit3 size={16} color={colors.textMuted} />
                     </TouchableOpacity>
@@ -394,7 +382,7 @@ const BudgetPlannerScreen = () => {
                     <View style={styles.goalActions}>
                       <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: colors.surface }]}
-                        onPress={() => editGoal(goal)}
+                        onPress={() => editGoal()}
                       >
                         <Edit3 size={16} color={colors.textMuted} />
                       </TouchableOpacity>
@@ -742,6 +730,7 @@ const BudgetPlannerScreen = () => {
         </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
+    </ErrorBoundary>
   );
 };
 
@@ -1059,6 +1048,17 @@ const styles = StyleSheet.create({
   reportValue: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
   },
 });
 

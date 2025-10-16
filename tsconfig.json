@@ -8,6 +8,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUncheckedIndexedAccess": true,
     "paths": {
       "assets": ["./assets/*", "./assets/"],
       "components": ["./components/*", "./components/"],
@@ -22,6 +29,7 @@
       "services": ["./services/*", "./services/"],
       "styles": ["./styles/*", "./styles/"],
       "types": ["./types/*", "./types/"],
+      "utils": ["./utils/*", "./utils/"],
     }
   },
   "exclude": ["node_modules"],

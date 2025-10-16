@@ -6,30 +6,64 @@ import { getGreeting } from "scripts/time";
 import { useUser } from "context/user";
 import { useWageTracker } from "context/wageTracker";
 import { useTheme } from "context/ThemeContext";
+import ErrorBoundary from "components/ErrorBoundary";
+import { 
+  safeArray, 
+  safeNumber, 
+  safeString, 
+  safeDate, 
+  safeCurrencyFormat,
+  safeMap,
+  safeReduce
+} from "utils/safeAccess";
 
-const fmtCurrency = (n: number) =>
-  Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n);
+const fmtCurrency = (n: number) => safeCurrencyFormat(n);
 
 const HomeScreen = ({ navigation }: any) => {
   const { user } = useUser();
   const { loading, employers, stats, nextSoonest } = useWageTracker();
   const { colors } = useTheme();
 
+  // Safe access to user data
+  const safeUser = {
+    firstName: safeString(user?.firstName, 'User'),
+  };
+
+  // Safe access to employers
+  const safeEmployers = safeArray(employers, []);
+
   // Flatten last 8 paychecks across all employers for the spark bars
   const bars = useMemo(() => {
-    const all = employers.flatMap(e =>
-      e.history.map(h => ({ ...h, employerId: e.id, employerName: e.name }))
-    );
-    const lastN = all.sort((a, b) => a.date - b.date).slice(-8);
-    const maxNet = lastN.reduce((m, p) => Math.max(m, p.net), 0) || 1;
-    return lastN.map(p => ({
-      label: new Date(p.date).toLocaleDateString(undefined, { month: "numeric", day: "numeric" }),
-      heightPct: Math.max(0.18, Math.min(1, p.net / maxNet)), // slightly taller minimum
-      value: p.net,
-    }));
-  }, [employers]);
+    try {
+      const all: any[] = [];
+      safeEmployers.forEach((e: any) => {
+        const history = safeArray(e?.history, []);
+        history.forEach((h: any) => {
+          all.push({
+            employerId: safeString(e?.id, ''),
+            employerName: safeString(e?.name, 'Unknown'),
+            date: safeNumber(h?.date, 0),
+            net: safeNumber(h?.net, 0),
+          });
+        });
+      });
 
-  const hasAnyData = employers.length > 0 && (bars.length > 0 || !!nextSoonest);
+      const sorted = all.sort((a, b) => safeNumber(a?.date, 0) - safeNumber(b?.date, 0));
+      const lastN = sorted.slice(-8);
+      const maxNet = safeReduce(lastN, (m, p) => Math.max(m, safeNumber(p?.net, 0)), 0) || 1;
+      
+      return safeMap(lastN, (p) => ({
+        label: safeDate(p?.date).toLocaleDateString(undefined, { month: "numeric", day: "numeric" }),
+        heightPct: Math.max(0.18, Math.min(1, safeNumber(p?.net, 0) / maxNet)),
+        value: safeNumber(p?.net, 0),
+      }));
+    } catch (error) {
+      console.warn('Error calculating bars:', error);
+      return [];
+    }
+  }, [safeEmployers]);
+
+  const hasAnyData = safeEmployers.length > 0 && (bars.length > 0 || !!nextSoonest);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -38,15 +72,16 @@ const HomeScreen = ({ navigation }: any) => {
   });
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Hero header */}
-        <View style={styles.hero}>
-          <Text style={[styles.greeting, { color: colors.text }]}>
-            Good {getGreeting()}, {user.firstName || "there"}
-          </Text>
-          <Text style={[styles.subtle, { color: colors.textMuted }]}>{today}</Text>
-        </View>
+    <ErrorBoundary>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors?.background || '#FFFFFF' }]}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {/* Hero header */}
+          <View style={styles.hero}>
+            <Text style={[styles.greeting, { color: colors?.text || '#000000' }]}>
+              Good {safeString(getGreeting(), 'Hello')}, {safeUser.firstName}
+            </Text>
+            <Text style={[styles.subtle, { color: colors?.textMuted || '#6C757D' }]}>{today}</Text>
+          </View>
 
         {/* Overview / Empty state */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -151,6 +186,7 @@ const HomeScreen = ({ navigation }: any) => {
 
       </ScrollView>
     </SafeAreaView>
+    </ErrorBoundary>
   );
 };
 

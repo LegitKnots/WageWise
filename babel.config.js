@@ -20,6 +20,7 @@ module.exports = {
           services: './src/services/',
           styles: './src/styles/',
           types: './src/types/',
+          utils: './src/utils/',
         },
       },
     ],

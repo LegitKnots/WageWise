@@ -88,7 +88,7 @@ export default function ScheduleModal({
                   onPress={() => setDow(key)}
                   style={styles.stripCell}
                   accessibilityRole="button"
-                  accessibilityLabel={key[0].toUpperCase() + key.slice(1)}
+                  accessibilityLabel={key?.[0]?.toUpperCase() + key?.slice(1) || ''}
                 >
                   <Text style={[styles.stripText, active && styles.stripTextActive]}>
                     {DOW_LABELS[i]}

@@ -25,17 +25,17 @@ class NotificationService {
       if (hasPermission) {
         // Configure push notifications
         PushNotification.configure({
-          onRegister: function (token) {
+          onRegister: function (token: { token: string; os: string }) {
             console.log('TOKEN:', token);
           },
-          onNotification: function (notification) {
+          onNotification: function (notification: any) {
             console.log('NOTIFICATION:', notification);
           },
-          onAction: function (notification) {
+          onAction: function (notification: any) {
             console.log('ACTION:', notification.action);
             console.log('NOTIFICATION:', notification);
           },
-          onRegistrationError: function(err) {
+          onRegistrationError: function(err: Error) {
             console.error(err.message, err);
           },
           permissions: {
@@ -45,9 +45,21 @@ class NotificationService {
           },
           popInitialNotification: true,
           requestPermissions: false, // We handle this manually
-          // Android specific
-          channelId: 'payday_reminders',
         });
+
+        // Create Android channel (if not already created)
+        if (Platform.OS === 'android') {
+          PushNotification.createChannel(
+            {
+              channelId: 'payday_reminders',
+              channelName: 'Payday Reminders',
+              channelDescription: 'Notifications to remind you about your upcoming paydays',
+              importance: 4, // HIGH
+              vibrate: true,
+            },
+            (created) => console.log(`Channel 'payday_reminders' created: ${created}`),
+          );
+        }
 
         this.isInitialized = true;
       }

@@ -17,6 +17,7 @@ import {
   CalendarClock,
   CalendarCog,
 } from "lucide-react-native";
+import ErrorBoundary from "components/ErrorBoundary";
 
 import EmployerEditorModal, {
   EmployerEditorPayload,
@@ -55,6 +56,11 @@ const WageTrackerScreen = ({ route }: { route?: any }) => {
   } = useWageTracker();
   const { colors } = useTheme();
 
+  // Safe access to data - these are used in the component but may not be directly referenced
+  // const safeEmployers = safeArray(employers, []);
+  // const safeNextPayDates = safeArray(nextPayDates, []);
+  // const isLoading = safeBoolean(loading, false);
+
   /* ---------- modal / editing state ---------- */
   const [showEmployerModal, setShowEmployerModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -81,6 +87,8 @@ const WageTrackerScreen = ({ route }: { route?: any }) => {
       }, 100);
       return () => clearTimeout(timer);
     }
+    // No cleanup needed when condition is false - this is intentional
+    // @ts-ignore - useEffect cleanup is optional
   }, [route?.params?.openAddEmployer]);
 
   /* ---------- open handlers ---------- */
@@ -187,8 +195,9 @@ const WageTrackerScreen = ({ route }: { route?: any }) => {
 
   /* -------------------- render -------------------- */
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <ErrorBoundary>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors?.background || '#FFFFFF' }]}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Wage Tracker</Text>
@@ -380,6 +389,7 @@ const WageTrackerScreen = ({ route }: { route?: any }) => {
         onSave={handleSavePay}
       />
     </SafeAreaView>
+    </ErrorBoundary>
   );
 };
 

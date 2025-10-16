@@ -21,4 +21,8 @@ export type WageTrackerTabNavigatorParamList = {
 
 export type SettingsTabNavigatorParamList = {
     mainScreen: any
+    DataManagement: undefined
+    Notifications: undefined
+    Theme: undefined
+    NameEdit: undefined
 }

@@ -286,7 +286,11 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }
   };
 
-  const CurrentStepComponent = ONBOARDING_STEPS[currentStep].component;
+  const CurrentStepComponent = ONBOARDING_STEPS[currentStep]?.component;
+
+  if (!CurrentStepComponent) {
+    return null; // Handle case where currentStep is invalid
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>

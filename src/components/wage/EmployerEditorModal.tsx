@@ -205,7 +205,7 @@ export default function EmployerEditorModal({
         <Text style={styles.label}>Color</Text>
         <ColorSwatches
           colors={PRESET_COLORS}
-          value={color}
+          value={color ?? ""}
           onChange={(c) => {
             setColor(c);
             setCustomOpen(false);
@@ -220,7 +220,7 @@ export default function EmployerEditorModal({
         {customOpen && (
           <FormText
             label="Custom Hex"
-            value={color}
+            value={color?.trim() ?? ""}
             onChange={setColor}
             placeholder="#007AFF"
             autoCapitalize="none"
@@ -278,7 +278,7 @@ export default function EmployerEditorModal({
           onPress={() =>
             onSave({
               name: name.trim() || "Employer",
-              color,
+              color: color || PRESET_COLORS[0] as string,
               payStructure: { 
                 base, 
                 extras,

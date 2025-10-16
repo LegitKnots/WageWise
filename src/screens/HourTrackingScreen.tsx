@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,16 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Clock, Plus, Edit3, Trash2, CheckCircle, Play, Pause, Square } from 'lucide-react-native';
+import { Clock, Plus, Edit3, Trash2, CheckCircle, Play, Square } from 'lucide-react-native';
 import { useWageTracker } from 'context/wageTracker';
 import { useTheme } from 'context/ThemeContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Employer, PayDay } from 'types/wageTracker';
+import ErrorBoundary from 'components/ErrorBoundary';
+import { 
+  safeNumber, 
+  safeString, 
+  safeDate, 
+  safeMap,
+  safeAsyncStorageGet} from 'utils/safeAccess';
 
 interface HourEntry {
   id: string;
@@ -39,12 +44,13 @@ const STORAGE_KEY = '@app:hourTracking:v1';
 const HourTrackingScreen = () => {
   const { colors } = useTheme();
   const { employers } = useWageTracker();
+
+  // Safe access to employers
   const [hourEntries, setHourEntries] = useState<HourEntry[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [selectedEmployer, setSelectedEmployer] = useState<string | null>(null);
   const [activeTimer, setActiveTimer] = useState<TimeEntry | null>(null);
   const [showAddEntry, setShowAddEntry] = useState(false);
-  const [breakDuration, setBreakDuration] = useState('0');
   const [notes, setNotes] = useState('');
 
   // Load data on mount
@@ -54,37 +60,40 @@ const HourTrackingScreen = () => {
 
   const loadData = async () => {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        // Convert date strings back to Date objects
-        const hourEntries = (parsed.hourEntries || []).map((entry: any) => ({
-          ...entry,
-          date: new Date(entry.date)
-        }));
-        const timeEntries = (parsed.timeEntries || []).map((entry: any) => ({
-          ...entry,
-          startTime: new Date(entry.startTime),
-          endTime: entry.endTime ? new Date(entry.endTime) : undefined
-        }));
-        setHourEntries(hourEntries);
-        setTimeEntries(timeEntries);
-      }
+      const data = await safeAsyncStorageGet(STORAGE_KEY, { hourEntries: [], timeEntries: [] });
+      
+      // Convert date strings back to Date objects with safe access
+      const hourEntries = safeMap(data.hourEntries, (entry: any) => ({
+        ...entry,
+        id: safeString(entry?.id, ''),
+        employerId: safeString(entry?.employerId, ''),
+        date: safeDate(entry?.date),
+        hoursWorked: safeNumber(entry?.hoursWorked, 0),
+        hoursPaid: safeNumber(entry?.hoursPaid, 0),
+        notes: safeString(entry?.notes, ''),
+      }));
+      
+      const timeEntries = safeMap(data.timeEntries, (entry: any) => ({
+        ...entry,
+        id: safeString(entry?.id, ''),
+        employerId: safeString(entry?.employerId, ''),
+        startTime: safeDate(entry?.startTime),
+        endTime: entry?.endTime ? safeDate(entry.endTime) : undefined,
+        breakDuration: safeNumber(entry?.breakDuration, 0),
+        notes: safeString(entry?.notes, ''),
+        isActive: typeof entry?.isActive === 'boolean' ? entry.isActive : false,
+      }));
+
+      setHourEntries(hourEntries);
+      setTimeEntries(timeEntries);
     } catch (error) {
       console.error('Error loading hour tracking data:', error);
+      // Set empty arrays as fallback
+      setHourEntries([]);
+      setTimeEntries([]);
     }
   };
 
-  const saveData = async () => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({
-        hourEntries,
-        timeEntries,
-      }));
-    } catch (error) {
-      console.error('Error saving hour tracking data:', error);
-    }
-  };
 
   // Calculate discrepancies
   const discrepancies = useMemo(() => {
@@ -187,7 +196,7 @@ const HourTrackingScreen = () => {
     setNotes('');
   };
 
-  const editHourEntry = (entry: HourEntry) => {
+  const editHourEntry = () => {
     // TODO: Open modal to edit hour entry
     Alert.alert('Edit Hour Entry', 'This feature will be implemented in the next update.');
   };
@@ -224,12 +233,13 @@ const HourTrackingScreen = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
-        contentContainerStyle={styles.content} 
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+    <ErrorBoundary>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors?.background || '#FFFFFF' }]}>
+        <ScrollView 
+          contentContainerStyle={styles.content} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>Hour Tracking</Text>
@@ -345,26 +355,47 @@ const HourTrackingScreen = () => {
           <View style={styles.entriesList}>
             {discrepancies.map((discrepancy) => {
               if (!discrepancy) return null;
-              const { entry, employer, difference, percentageDiff, status } = discrepancy;
-              
+              const {
+                employer,
+                difference,
+                percentageDiff,
+                status,
+                id,
+                employerId,
+                date,
+                hoursWorked,
+                hoursPaid,
+                notes
+              } = discrepancy;
+
+              // Recreate 'entry' object from flat discrepancy shape
+              const entry = {
+                id,
+                employerId,
+                date: typeof date === "string" ? new Date(date) : date,
+                hoursWorked,
+                hoursPaid,
+                notes
+              };
+
               return (
                 <View key={entry.id} style={[styles.entryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.entryHeader}>
                     <View style={styles.entryInfo}>
-                      <Text style={[styles.employerName, { color: colors.text }]}>{employer.name}</Text>
+                      <Text style={[styles.entryEmployerName, { color: colors.text }]}>{employer.name}</Text>
                       <Text style={[styles.entryDate, { color: colors.textMuted }]}>
                         {entry.date.toLocaleDateString()}
                       </Text>
                     </View>
                     <View style={styles.entryActions}>
                       <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: colors.surface }]}
-                        onPress={() => editHourEntry(entry)}
+                        style={[styles.entryActionButton, { backgroundColor: colors.surface }]}
+                        onPress={editHourEntry}
                       >
                         <Edit3 size={16} color={colors.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: colors.surface }]}
+                        style={[styles.entryActionButton, { backgroundColor: colors.surface }]}
                         onPress={() => deleteHourEntry(entry.id)}
                       >
                         <Trash2 size={16} color={colors.error} />
@@ -479,6 +510,7 @@ const HourTrackingScreen = () => {
         </View>
       )}
     </SafeAreaView>
+    </ErrorBoundary>
   );
 };
 
@@ -665,7 +697,7 @@ const styles = StyleSheet.create({
   entryInfo: {
     flex: 1,
   },
-  employerName: {
+  entryEmployerName: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
@@ -675,9 +707,11 @@ const styles = StyleSheet.create({
   },
   entryActions: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 0, // react-native supports rowGap since v0.71, but fallback to 0 if unsupported
   },
-  actionButton: {
+  entryActionButton: {
     padding: 8,
     borderRadius: 8,
   },

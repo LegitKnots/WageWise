@@ -117,7 +117,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     // Get initial system theme
-    setSystemColorScheme(Appearance.getColorScheme());
+    setSystemColorScheme(Appearance.getColorScheme() || 'light');
 
     return () => subscription?.remove();
   }, []);
